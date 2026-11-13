@@ -12,9 +12,7 @@ interface SessionNotifier {
     fun stopped()
 }
 
-class OngoingSessionNotifier @Inject constructor(
-    @ApplicationContext private val context: Context,
-) : SessionNotifier {
+class OngoingSessionNotifier @Inject constructor(@ApplicationContext private val context: Context) : SessionNotifier {
     override fun started(title: String, startedAtElapsedRealtime: Long) {
         val intent = Intent(context, OngoingSessionService::class.java)
             .putExtra(OngoingSessionService.EXTRA_TITLE, title)

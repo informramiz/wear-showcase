@@ -44,7 +44,10 @@ fun HistoryContent(state: HistoryUiState, zone: ZoneId = ZoneId.systemDefault())
     ScreenScaffold(scrollState = listState) { contentPadding ->
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
             item {
-                ListHeader(Modifier.fillMaxWidth().transformedHeight(this, spec), transformation = SurfaceTransformation(spec)) {
+                ListHeader(
+                    Modifier.fillMaxWidth().transformedHeight(this, spec),
+                    transformation = SurfaceTransformation(spec),
+                ) {
                     Text("History")
                 }
             }

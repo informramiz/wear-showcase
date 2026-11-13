@@ -2,6 +2,7 @@ package com.codebyramiz.breathefocus.wear.complication
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.graphics.drawable.Icon
 import androidx.wear.watchface.complications.data.ComplicationData
 import androidx.wear.watchface.complications.data.ComplicationType
 import androidx.wear.watchface.complications.data.MonochromaticImage
@@ -10,16 +11,15 @@ import androidx.wear.watchface.complications.data.RangedValueComplicationData
 import androidx.wear.watchface.complications.data.ShortTextComplicationData
 import androidx.wear.watchface.complications.datasource.ComplicationRequest
 import androidx.wear.watchface.complications.datasource.SuspendingComplicationDataSourceService
-import android.graphics.drawable.Icon
 import com.codebyramiz.breathefocus.core.data.SessionRepository
 import com.codebyramiz.breathefocus.core.model.MindfulStats
 import com.codebyramiz.breathefocus.wear.MainActivity
 import com.codebyramiz.breathefocus.wear.R
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.flow.first
 import java.time.Clock
 import java.time.LocalDate
 import javax.inject.Inject
+import kotlinx.coroutines.flow.first
 
 /** "Today's mindful minutes" for any watch face, as short text or a ranged ring toward the goal. */
 @AndroidEntryPoint

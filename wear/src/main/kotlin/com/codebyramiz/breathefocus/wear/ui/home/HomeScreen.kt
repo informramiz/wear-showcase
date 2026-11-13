@@ -91,7 +91,13 @@ fun HomeContent(
                 HomeButton(
                     label = pattern.displayName,
                     secondary = pattern.summary,
-                    icon = if (pattern == BreathingPattern.COHERENT) Icons.Rounded.SelfImprovement else Icons.Rounded.Air,
+                    icon = if (pattern ==
+                        BreathingPattern.COHERENT
+                    ) {
+                        Icons.Rounded.SelfImprovement
+                    } else {
+                        Icons.Rounded.Air
+                    },
                     onClick = { onBreathe(pattern) },
                     modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
                     transformation = SurfaceTransformation(spec),

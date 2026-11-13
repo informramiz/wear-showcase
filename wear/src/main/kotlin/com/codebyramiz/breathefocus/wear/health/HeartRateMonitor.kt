@@ -15,12 +15,12 @@ import androidx.health.services.client.data.DeltaDataType
 import androidx.health.services.client.getCapabilities
 import androidx.health.services.client.unregisterMeasureCallback
 import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
-import javax.inject.Inject
 
 sealed interface HeartRate {
     /** No sensor, no permission, or Health Services missing: the session still runs. */
@@ -36,9 +36,8 @@ interface HeartRateMonitor {
 }
 
 /** Live heart rate through Health Services [androidx.health.services.client.MeasureClient]. */
-class HealthServicesHeartRateMonitor @Inject constructor(
-    @ApplicationContext private val context: Context,
-) : HeartRateMonitor {
+class HealthServicesHeartRateMonitor @Inject constructor(@ApplicationContext private val context: Context) :
+    HeartRateMonitor {
 
     override fun readings(): Flow<HeartRate> {
         if (!hasPermission(context)) return flowOf(HeartRate.Unavailable("Permission needed"))
@@ -67,7 +66,9 @@ class HealthServicesHeartRateMonitor @Inject constructor(
             }
             measureClient.registerMeasureCallback(DataType.HEART_RATE_BPM, callback)
             awaitClose {
-                runBlocking { runCatching { measureClient.unregisterMeasureCallback(DataType.HEART_RATE_BPM, callback) } }
+                runBlocking {
+                    runCatching { measureClient.unregisterMeasureCallback(DataType.HEART_RATE_BPM, callback) }
+                }
             }
         }
     }

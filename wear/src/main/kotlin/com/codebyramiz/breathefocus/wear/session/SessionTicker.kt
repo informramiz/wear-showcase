@@ -1,10 +1,10 @@
 package com.codebyramiz.breathefocus.wear.session
 
 import android.os.SystemClock
+import javax.inject.Inject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import javax.inject.Inject
 
 /** Emits elapsed session time. A fake drives deterministic ViewModel tests. */
 fun interface SessionTicker {

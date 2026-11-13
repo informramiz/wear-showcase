@@ -26,7 +26,13 @@ import com.codebyramiz.breathefocus.wear.ui.theme.BreatheTheme
 fun WearApp(quickStart: BreathingPattern? = null) {
     BreatheTheme {
         AppScaffold {
-            val initial: Array<NavKey> = if (quickStart != null) arrayOf(Home, Breathing(quickStart.name)) else arrayOf(Home)
+            val initial: Array<NavKey> = if (quickStart !=
+                null
+            ) {
+                arrayOf(Home, Breathing(quickStart.name))
+            } else {
+                arrayOf(Home)
+            }
             val backStack = rememberNavBackStack(*initial)
             NavDisplay(
                 backStack = backStack,

@@ -15,6 +15,9 @@ import com.codebyramiz.breathefocus.wear.session.SessionNotifier
 import com.codebyramiz.breathefocus.wear.session.SessionRecorder
 import com.codebyramiz.breathefocus.wear.session.SessionTicker
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.time.Clock
+import java.util.UUID
+import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -24,9 +27,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.time.Clock
-import java.util.UUID
-import javax.inject.Inject
 
 data class BreathingUiState(
     val pattern: BreathingPattern = BreathingPattern.DEFAULT,

@@ -6,13 +6,13 @@ import com.codebyramiz.breathefocus.core.data.SessionRepository
 import com.codebyramiz.breathefocus.core.model.MindfulStats
 import com.codebyramiz.breathefocus.core.model.Session
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.time.Clock
+import java.time.LocalDate
+import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import java.time.Clock
-import java.time.LocalDate
-import javax.inject.Inject
 
 data class HistoryUiState(
     val loading: Boolean = true,
@@ -22,10 +22,7 @@ data class HistoryUiState(
 )
 
 @HiltViewModel
-class HistoryViewModel @Inject constructor(
-    repository: SessionRepository,
-    clock: Clock,
-) : ViewModel() {
+class HistoryViewModel @Inject constructor(repository: SessionRepository, clock: Clock) : ViewModel() {
     private val stats = MindfulStats(clock.zone)
 
     val state: StateFlow<HistoryUiState> = repository.observeAll()

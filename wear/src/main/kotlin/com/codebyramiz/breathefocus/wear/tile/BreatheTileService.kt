@@ -19,10 +19,10 @@ import com.codebyramiz.breathefocus.core.data.SettingsRepository
 import com.codebyramiz.breathefocus.core.model.MindfulStats
 import com.codebyramiz.breathefocus.wear.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.flow.first
 import java.time.Clock
 import java.time.LocalDate
 import javax.inject.Inject
+import kotlinx.coroutines.flow.first
 
 /** Today's progress toward the daily goal, plus one tap to start the default breathing pattern. */
 @AndroidEntryPoint
@@ -58,24 +58,23 @@ class BreatheTileService : Material3TileService() {
             .build()
     }
 
-    private fun startClickable(patternName: String): ModifiersBuilders.Clickable =
-        ModifiersBuilders.Clickable.Builder()
-            .setId("start")
-            .setOnClick(
-                ActionBuilders.LaunchAction.Builder()
-                    .setAndroidActivity(
-                        ActionBuilders.AndroidActivity.Builder()
-                            .setPackageName(packageName)
-                            .setClassName(ComponentName(this, MainActivity::class.java).className)
-                            .addKeyToExtraMapping(
-                                MainActivity.EXTRA_PATTERN,
-                                ActionBuilders.AndroidStringExtra.Builder().setValue(patternName).build(),
-                            )
-                            .build(),
-                    )
-                    .build(),
-            )
-            .build()
+    private fun startClickable(patternName: String): ModifiersBuilders.Clickable = ModifiersBuilders.Clickable.Builder()
+        .setId("start")
+        .setOnClick(
+            ActionBuilders.LaunchAction.Builder()
+                .setAndroidActivity(
+                    ActionBuilders.AndroidActivity.Builder()
+                        .setPackageName(packageName)
+                        .setClassName(ComponentName(this, MainActivity::class.java).className)
+                        .addKeyToExtraMapping(
+                            MainActivity.EXTRA_PATTERN,
+                            ActionBuilders.AndroidStringExtra.Builder().setValue(patternName).build(),
+                        )
+                        .build(),
+                )
+                .build(),
+        )
+        .build()
 
     private companion object {
         const val FRESHNESS_MILLIS = 30 * 60 * 1000L

@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -28,7 +29,11 @@ class OngoingSessionService : LifecycleService() {
 
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, getString(R.string.channel_sessions), NotificationManager.IMPORTANCE_DEFAULT),
+            NotificationChannel(
+                CHANNEL_ID,
+                getString(R.string.channel_sessions),
+                NotificationManager.IMPORTANCE_DEFAULT,
+            ),
         )
         val openApp = PendingIntent.getActivity(
             this,
@@ -64,7 +69,13 @@ class OngoingSessionService : LifecycleService() {
             this,
             NOTIFICATION_ID,
             builder.build(),
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH,
+            if (Build.VERSION.SDK_INT >=
+                Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+            ) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH
+            } else {
+                0
+            },
         )
         return START_NOT_STICKY
     }
