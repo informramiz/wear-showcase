@@ -5,13 +5,13 @@ import androidx.lifecycle.viewModelScope
 import com.codebyramiz.breathefocus.core.data.SessionRepository
 import com.codebyramiz.breathefocus.core.data.SettingsRepository
 import com.codebyramiz.breathefocus.core.data.sync.DataLayerSync
+import com.codebyramiz.breathefocus.core.data.time.today
 import com.codebyramiz.breathefocus.core.model.BreathingPattern
 import com.codebyramiz.breathefocus.core.model.DayTotal
 import com.codebyramiz.breathefocus.core.model.MindfulStats
 import com.codebyramiz.breathefocus.core.model.Session
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
-import java.time.LocalDate
 import javax.inject.Inject
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,7 +44,7 @@ class HomeViewModel @Inject constructor(
     sessions: SessionRepository,
     private val settings: SettingsRepository,
     private val sync: DataLayerSync,
-    private val clock: Clock,
+    clock: Clock,
 ) : ViewModel() {
 
     private val stats = MindfulStats(clock.zone)
@@ -54,8 +54,8 @@ class HomeViewModel @Inject constructor(
         sessions.observeAll(),
         settings.defaultPattern,
         watchSync,
-    ) { all, pattern, syncState ->
-        val today = LocalDate.now(clock)
+        clock.today(),
+    ) { all, pattern, syncState, today ->
         HomeUiState(
             week = stats.lastSevenDays(today, all),
             todayMinutes = stats.minutesOn(today, all),

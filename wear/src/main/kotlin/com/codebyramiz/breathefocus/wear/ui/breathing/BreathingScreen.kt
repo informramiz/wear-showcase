@@ -1,6 +1,5 @@
 package com.codebyramiz.breathefocus.wear.ui.breathing
 
-import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -53,11 +52,11 @@ fun BreathingScreen(
     val context = LocalContext.current
     // Heart rate is optional: the session starts whatever the user answers.
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        viewModel.start(pattern, SystemClock.elapsedRealtime())
+        viewModel.start(pattern)
     }
     LaunchedEffect(pattern) {
         if (HealthServicesHeartRateMonitor.hasPermission(context)) {
-            viewModel.start(pattern, SystemClock.elapsedRealtime())
+            viewModel.start(pattern)
         } else {
             permissionLauncher.launch(HealthServicesHeartRateMonitor.permission)
         }

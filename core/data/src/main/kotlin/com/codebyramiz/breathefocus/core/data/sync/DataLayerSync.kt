@@ -1,5 +1,6 @@
 package com.codebyramiz.breathefocus.core.data.sync
 
+import android.net.Uri
 import com.codebyramiz.breathefocus.core.model.BreathingPattern
 import com.codebyramiz.breathefocus.core.model.Session
 import com.google.android.gms.wearable.DataClient
@@ -15,12 +16,34 @@ interface DataLayerSync {
 
 class WearableDataLayerSync @Inject constructor(private val dataClient: DataClient) : DataLayerSync {
 
+    /**
+     * Writes one item per chunk, then deletes chunks left over from a longer earlier history.
+     * Each chunk is a self-contained session list, so the phone can import them in any order.
+     */
     override suspend fun publishSessions(sessions: List<Session>) {
-        val request = PutDataMapRequest.create(DataLayerContract.PATH_SESSIONS).apply {
-            dataMap.putString(DataLayerContract.KEY_SESSIONS_JSON, SyncCodec.encode(sessions))
-            dataMap.putLong(DataLayerContract.KEY_UPDATED_AT, System.currentTimeMillis())
-        }.asPutDataRequest().setUrgent()
-        dataClient.putDataItem(request).await()
+        val chunks = SyncCodec.encodeChunks(sessions, DataLayerContract.MAX_SESSION_CHUNK_BYTES)
+        chunks.forEachIndexed { index, payload ->
+            val request = PutDataMapRequest.create(DataLayerContract.sessionChunkPath(index)).apply {
+                dataMap.putString(DataLayerContract.KEY_SESSIONS_JSON, payload)
+                dataMap.putLong(DataLayerContract.KEY_UPDATED_AT, System.currentTimeMillis())
+            }.asPutDataRequest().setUrgent()
+            dataClient.putDataItem(request).await()
+        }
+        deleteStaleChunks(keep = chunks.size)
+    }
+
+    private suspend fun deleteStaleChunks(keep: Int) {
+        val prefix = Uri.parse("wear://*${DataLayerContract.PATH_SESSIONS}")
+        val buffer = dataClient.getDataItems(prefix, DataClient.FILTER_PREFIX).await()
+        val stale = try {
+            buffer.map { it.uri }.filter { uri ->
+                val index = DataLayerContract.sessionChunkIndex(uri.path)
+                index == null || index >= keep
+            }
+        } finally {
+            buffer.release()
+        }
+        stale.forEach { dataClient.deleteDataItems(it, DataClient.FILTER_LITERAL).await() }
     }
 
     override suspend fun publishDefaultPattern(pattern: BreathingPattern) {

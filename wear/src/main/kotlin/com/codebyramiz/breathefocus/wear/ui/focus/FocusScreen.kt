@@ -1,6 +1,5 @@
 package com.codebyramiz.breathefocus.wear.ui.focus
 
-import android.os.SystemClock
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,7 +34,7 @@ fun FocusScreen(onFinished: () -> Unit, viewModel: FocusViewModel = hiltViewMode
     val state by viewModel.state.collectAsStateWithLifecycle()
     FocusContent(
         state = state,
-        onStart = { viewModel.start(SystemClock.elapsedRealtime()) },
+        onStart = { viewModel.start() },
         onStop = {
             viewModel.stop()
             onFinished()

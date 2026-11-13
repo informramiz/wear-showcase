@@ -51,12 +51,11 @@ class OngoingSessionService : LifecycleService() {
             .setOngoing(true)
             .setSilent(true)
 
-        // Status.StopwatchPart expects a wall-clock base.
-        val wallStart = System.currentTimeMillis() - (SystemClock.elapsedRealtime() - startedAt)
+        // Ongoing Activity status parts use the SystemClock.elapsedRealtime() time base.
         val status = Status.Builder()
             .addTemplate("#title# · #time#")
             .addPart("title", Status.TextPart(title))
-            .addPart("time", Status.StopwatchPart(wallStart))
+            .addPart("time", Status.StopwatchPart(startedAt))
             .build()
         OngoingActivity.Builder(applicationContext, NOTIFICATION_ID, builder)
             .setStaticIcon(R.drawable.ic_breathe)

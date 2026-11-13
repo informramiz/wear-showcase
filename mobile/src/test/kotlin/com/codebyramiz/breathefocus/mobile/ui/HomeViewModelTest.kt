@@ -5,12 +5,15 @@ import com.codebyramiz.breathefocus.mobile.FakeSessionRepository
 import com.codebyramiz.breathefocus.mobile.FakeSettings
 import com.codebyramiz.breathefocus.mobile.FakeSync
 import com.codebyramiz.breathefocus.mobile.MainDispatcherRule
+import com.codebyramiz.breathefocus.mobile.SchedulerClock
 import com.codebyramiz.breathefocus.mobile.session
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -73,5 +76,23 @@ class HomeViewModelTest {
 
         assertEquals(BreathingPattern.BOX, settings.pattern.value)
         assertEquals(WatchSync.Failed, vm.state.first { it.watchSync != WatchSync.Idle }.watchSync)
+    }
+
+    @Test
+    fun `today rolls over at midnight while the screen stays open`() = runTest {
+        val beforeMidnight = Instant.parse("2026-11-13T23:59:00Z")
+        val movingClock = SchedulerClock(testScheduler, beforeMidnight)
+        sessions.sessions.value = listOf(session("late", beforeMidnight.toEpochMilli() - 30 * 60_000L, minutes = 5))
+        val vm = HomeViewModel(sessions, settings, FakeSync(), movingClock)
+        backgroundScope.launch { vm.state.collect {} }
+        runCurrent()
+        assertEquals(5, vm.state.value.todayMinutes)
+
+        // No data changes; only the date does.
+        advanceTimeBy(2 * 60_000L)
+        runCurrent()
+
+        assertEquals(0, vm.state.value.todayMinutes)
+        assertEquals(listOf(5, 0), vm.state.value.week.takeLast(2).map { it.minutes })
     }
 }

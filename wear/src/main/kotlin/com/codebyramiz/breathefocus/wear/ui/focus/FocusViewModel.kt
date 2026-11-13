@@ -16,11 +16,15 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
 import java.util.UUID
 import javax.inject.Inject
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 data class FocusUiState(
@@ -29,6 +33,11 @@ data class FocusUiState(
     val pomodoro: PomodoroState = Pomodoro.stateAt(PomodoroConfig(), 0),
 )
 
+/**
+ * Runs one Pomodoro session for as long as its nav entry lives; clearing the ViewModel ends
+ * and records it. Block-end haptics are scheduled per phase; the countdown ticks only while
+ * the UI collects [state].
+ */
 @HiltViewModel
 class FocusViewModel @Inject constructor(
     private val ticker: SessionTicker,
@@ -38,52 +47,72 @@ class FocusViewModel @Inject constructor(
     private val clock: Clock,
 ) : ViewModel() {
 
+    private class Active(val startedAt: Long, val startedAtEpochMillis: Long)
+
     private val config = PomodoroConfig()
-    private val _state = MutableStateFlow(FocusUiState())
-    val state: StateFlow<FocusUiState> = _state.asStateFlow()
+    private val active = MutableStateFlow<Active?>(null)
+    private val finished = MutableStateFlow(FocusUiState())
+    private var hapticsJob: Job? = null
 
-    private var job: Job? = null
-    private var startedAtEpochMillis = 0L
-
-    fun start(startedAtElapsedRealtime: Long = 0L) {
-        if (_state.value.running) return
-        startedAtEpochMillis = clock.millis()
-        _state.value = FocusUiState(running = true)
-        notifier.started("Focus", startedAtElapsedRealtime)
-        job = viewModelScope.launch {
-            var lastPhase = FocusPhase.FOCUS
-            ticker.elapsedMillis().collect { elapsed ->
-                val pomodoro = Pomodoro.stateAt(config, elapsed)
-                if (pomodoro.phase != lastPhase) {
-                    lastPhase = pomodoro.phase
-                    haptics.focusBlockFinished()
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val state: StateFlow<FocusUiState> = active
+        .flatMapLatest { session ->
+            if (session == null) {
+                finished
+            } else {
+                ticker.frames().map { now ->
+                    val elapsed = now - session.startedAt
+                    FocusUiState(running = true, elapsedMillis = elapsed, pomodoro = Pomodoro.stateAt(config, elapsed))
                 }
-                _state.update { it.copy(elapsedMillis = elapsed, pomodoro = pomodoro) }
             }
         }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FocusUiState())
+
+    fun start() {
+        if (active.value != null) return
+        val session = Active(startedAt = ticker.now(), startedAtEpochMillis = clock.millis())
+        active.value = session
+        notifier.started("Focus", session.startedAt)
+        hapticsJob = viewModelScope.launch { blockHaptics(session) }
     }
 
     fun stop() {
-        val current = _state.value
-        if (!current.running) return
-        job?.cancel()
-        job = null
+        val session = active.value ?: return
+        val elapsed = ticker.now() - session.startedAt
+        hapticsJob?.cancel()
+        hapticsJob = null
         notifier.stopped()
-        _state.update { it.copy(running = false) }
+        finished.value =
+            FocusUiState(running = false, elapsedMillis = elapsed, pomodoro = Pomodoro.stateAt(config, elapsed))
+        active.value = null
         // Only focused time counts toward mindful minutes, not the breaks.
-        val focused = Pomodoro.focusedMillis(config, current.elapsedMillis)
-        val session = Session(
-            id = UUID.randomUUID().toString(),
-            type = SessionType.FOCUS,
-            pattern = null,
-            startedAtEpochMillis = startedAtEpochMillis,
-            durationMillis = focused,
-            averageHeartRate = null,
+        recorder.finish(
+            Session(
+                id = UUID.randomUUID().toString(),
+                type = SessionType.FOCUS,
+                pattern = null,
+                startedAtEpochMillis = session.startedAtEpochMillis,
+                durationMillis = Pomodoro.focusedMillis(config, elapsed),
+                averageHeartRate = null,
+            ),
         )
-        viewModelScope.launch { recorder.record(session) }
+    }
+
+    /** Buzzes when a focus block or a break ends, sleeping until then instead of polling. */
+    private suspend fun blockHaptics(session: Active) {
+        var lastPhase = FocusPhase.FOCUS
+        while (true) {
+            val pomodoro = Pomodoro.stateAt(config, ticker.now() - session.startedAt)
+            if (pomodoro.phase != lastPhase) {
+                lastPhase = pomodoro.phase
+                haptics.focusBlockFinished()
+            }
+            delay(pomodoro.remainingMillis.coerceAtLeast(1))
+        }
     }
 
     override fun onCleared() {
-        if (_state.value.running) stop()
+        // The nav entry was popped: end and record the session.
+        stop()
     }
 }
