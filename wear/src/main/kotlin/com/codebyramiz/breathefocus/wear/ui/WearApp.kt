@@ -1,7 +1,7 @@
 package com.codebyramiz.breathefocus.wear.ui
 
 import androidx.compose.runtime.Composable
-import androidx.navigation3.runtime.NavKey
+import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
@@ -16,24 +16,25 @@ import com.codebyramiz.breathefocus.wear.ui.nav.Breathing
 import com.codebyramiz.breathefocus.wear.ui.nav.Focus
 import com.codebyramiz.breathefocus.wear.ui.nav.History
 import com.codebyramiz.breathefocus.wear.ui.nav.Home
+import com.codebyramiz.breathefocus.wear.ui.nav.applyQuickStart
 import com.codebyramiz.breathefocus.wear.ui.theme.BreatheTheme
 
 /**
  * @param quickStart pattern requested by the tile: opens straight into a session,
  * with Home underneath so swipe-to-dismiss lands somewhere sensible.
+ * @param onQuickStartHandled called once [quickStart] has been applied to the back stack.
  */
 @Composable
-fun WearApp(quickStart: BreathingPattern? = null) {
+fun WearApp(quickStart: BreathingPattern? = null, onQuickStartHandled: () -> Unit = {}) {
     BreatheTheme {
         AppScaffold {
-            val initial: Array<NavKey> = if (quickStart !=
-                null
-            ) {
-                arrayOf(Home, Breathing(quickStart.name))
-            } else {
-                arrayOf(Home)
+            val backStack = rememberNavBackStack(Home)
+            LaunchedEffect(quickStart) {
+                if (quickStart != null) {
+                    backStack.applyQuickStart(quickStart)
+                    onQuickStartHandled()
+                }
             }
-            val backStack = rememberNavBackStack(*initial)
             NavDisplay(
                 backStack = backStack,
                 sceneStrategies = listOf(rememberSwipeDismissableSceneStrategy()),
