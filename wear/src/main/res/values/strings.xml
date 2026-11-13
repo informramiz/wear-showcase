@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Breathe &amp; Focus</string>
+    <string name="tile_label">Breathe</string>
+    <string name="complication_label">Mindful minutes</string>
+    <string name="channel_sessions">Active sessions</string>
+    <string name="session_running">Session in progress</string>
+</resources>
