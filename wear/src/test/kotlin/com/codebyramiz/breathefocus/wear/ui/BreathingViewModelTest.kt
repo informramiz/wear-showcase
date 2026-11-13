@@ -4,22 +4,26 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.codebyramiz.breathefocus.core.model.ActiveSession
 import com.codebyramiz.breathefocus.core.model.BreathPhase
 import com.codebyramiz.breathefocus.core.model.BreathingPattern
 import com.codebyramiz.breathefocus.core.model.SessionType
 import com.codebyramiz.breathefocus.wear.FakeHaptics
 import com.codebyramiz.breathefocus.wear.FakeHeartRate
 import com.codebyramiz.breathefocus.wear.FakeNotifier
-import com.codebyramiz.breathefocus.wear.FakeSessionRepository
+import com.codebyramiz.breathefocus.wear.FakePhaseAlarms
+import com.codebyramiz.breathefocus.wear.FakeRefresher
+import com.codebyramiz.breathefocus.wear.FakeSessionStore
 import com.codebyramiz.breathefocus.wear.FakeSync
 import com.codebyramiz.breathefocus.wear.FakeTicker
 import com.codebyramiz.breathefocus.wear.MainDispatcherRule
 import com.codebyramiz.breathefocus.wear.health.HeartRate
-import com.codebyramiz.breathefocus.wear.testRecorder
+import com.codebyramiz.breathefocus.wear.testActiveSessions
 import com.codebyramiz.breathefocus.wear.ui.breathing.BreathingViewModel
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -40,16 +44,28 @@ class BreathingViewModelTest {
     private val haptics = FakeHaptics()
     private val heartRate = FakeHeartRate()
     private val notifier = FakeNotifier()
-    private val repository = FakeSessionRepository()
+    private val repository = FakeSessionStore()
     private val sync = FakeSync()
-    private var refreshes = 0
-    private val recorder = testRecorder(repository, sync, clock, main.dispatcher) { refreshes++ }
+    private val refresher = FakeRefresher()
+
+    // Lazy so the scope is built after MainDispatcherRule has set the test Main dispatcher.
+    private val activeSessions by lazy {
+        testActiveSessions(
+            repository,
+            sync,
+            FakePhaseAlarms(),
+            ticker,
+            clock,
+            CoroutineScope(main.dispatcher),
+            refresher,
+        )
+    }
     private val stores = mutableListOf<ViewModelStore>()
 
     /** Creates the ViewModel the way a nav entry does, so clearing [store] runs onCleared. */
     private fun viewModel(store: ViewModelStore = ViewModelStore().also { stores += it }): BreathingViewModel {
         val factory = viewModelFactory {
-            initializer { BreathingViewModel(ticker, haptics, heartRate, recorder, notifier, clock) }
+            initializer { BreathingViewModel(ticker, haptics, heartRate, activeSessions, notifier) }
         }
         return ViewModelProvider.create(store, factory)[BreathingViewModel::class]
     }
@@ -71,6 +87,7 @@ class BreathingViewModelTest {
         assertTrue(vm.state.value.running)
         assertEquals(BreathPhase.INHALE, vm.state.value.breath.phase)
         assertTrue(notifier.running)
+        assertTrue(notifier.keepAwake)
         assertEquals(listOf(BreathPhase.INHALE), haptics.phases)
         vm.stop()
     }
@@ -117,7 +134,7 @@ class BreathingViewModelTest {
         assertEquals(clock.millis(), saved.startedAtEpochMillis)
         assertFalse(notifier.running)
         assertFalse(vm.state.value.running)
-        assertEquals(1, refreshes)
+        assertEquals(1, refresher.refreshes)
         assertEquals(listOf(listOf(saved)), sync.published)
     }
 
@@ -141,7 +158,8 @@ class BreathingViewModelTest {
         vm.stop()
 
         assertTrue(repository.sessions.value.isEmpty())
-        assertEquals(0, refreshes)
+        assertEquals(0, refresher.refreshes)
+        assertEquals(null, repository.active)
     }
 
     @Test
@@ -168,5 +186,31 @@ class BreathingViewModelTest {
         assertTrue(notifier.running)
         // End the session so runTest's final drain doesn't run the haptics loop forever.
         vm.stop()
+    }
+
+    @Test
+    fun `a recreated process continues the persisted session instead of starting over`() = runTest {
+        // The process died mid-session: only the persisted record is left.
+        val persisted = ActiveSession(
+            id = "survivor",
+            type = SessionType.BREATHING,
+            pattern = BreathingPattern.COHERENT,
+            startedAtElapsedRealtime = 0,
+            startedAtEpochMillis = clock.millis(),
+        )
+        repository.begin(persisted)
+        advanceTimeBy(70_000)
+
+        val restored = viewModel()
+        restored.start(BreathingPattern.BOX)
+        collect(restored)
+
+        assertEquals(BreathingPattern.COHERENT, restored.state.value.pattern)
+        assertEquals(persisted, repository.active)
+        restored.stop()
+        val saved = repository.sessions.value.single()
+        assertEquals("survivor", saved.id)
+        assertEquals(70_000, saved.durationMillis)
+        assertEquals(null, repository.active)
     }
 }

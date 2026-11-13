@@ -1,7 +1,6 @@
 package com.codebyramiz.breathefocus.wear.sync
 
 import android.util.Log
-import com.codebyramiz.breathefocus.core.data.SettingsRepository
 import com.codebyramiz.breathefocus.core.data.sync.DataLayerContract
 import com.codebyramiz.breathefocus.core.model.BreathingPattern
 import com.google.android.gms.wearable.DataEvent
@@ -18,11 +17,12 @@ import kotlinx.coroutines.withTimeoutOrNull
 @AndroidEntryPoint
 class WearDataListenerService : WearableListenerService() {
 
-    @Inject lateinit var settings: SettingsRepository
+    @Inject lateinit var importer: DefaultPatternImporter
 
     /**
      * Runs on a background thread. The save completes before returning: the system may unbind
      * the service as soon as this callback ends, which would cancel work launched elsewhere.
+     * If it does not finish in time, the stored item is reconciled in the application scope.
      */
     override fun onDataChanged(dataEvents: DataEventBuffer) {
         val latest = dataEvents
@@ -32,9 +32,12 @@ class WearDataListenerService : WearableListenerService() {
             }
             .lastOrNull() ?: return
         val saved = runBlocking {
-            withTimeoutOrNull(SAVE_TIMEOUT) { settings.setDefaultPattern(BreathingPattern.fromNameOrDefault(latest)) }
+            withTimeoutOrNull(SAVE_TIMEOUT) { importer.import(BreathingPattern.fromNameOrDefault(latest)) }
         }
-        if (saved == null) Log.w(TAG, "Timed out saving the default pattern from the phone")
+        if (saved == null) {
+            Log.w(TAG, "Timed out saving the default pattern from the phone; reconciling")
+            importer.reconcileInBackground()
+        }
     }
 
     private companion object {

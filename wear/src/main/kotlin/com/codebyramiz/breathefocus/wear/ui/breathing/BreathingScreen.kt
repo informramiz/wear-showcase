@@ -3,6 +3,7 @@ package com.codebyramiz.breathefocus.wear.ui.breathing
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,9 @@ import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -23,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -36,9 +41,14 @@ import androidx.wear.compose.ui.tooling.preview.WearPreviewDevices
 import com.codebyramiz.breathefocus.core.model.BreathPhase
 import com.codebyramiz.breathefocus.core.model.BreathingEngine
 import com.codebyramiz.breathefocus.core.model.BreathingPattern
+import com.codebyramiz.breathefocus.wear.R
 import com.codebyramiz.breathefocus.wear.health.HealthServicesHeartRateMonitor
 import com.codebyramiz.breathefocus.wear.health.HeartRate
+import com.codebyramiz.breathefocus.wear.ui.components.AmbientTicks
+import com.codebyramiz.breathefocus.wear.ui.components.NOTIFICATION_PERMISSION
 import com.codebyramiz.breathefocus.wear.ui.components.formatClock
+import com.codebyramiz.breathefocus.wear.ui.components.hasNotificationPermission
+import com.codebyramiz.breathefocus.wear.ui.components.isAmbient
 import com.codebyramiz.breathefocus.wear.ui.components.secondsLeft
 import com.codebyramiz.breathefocus.wear.ui.theme.BreatheTheme
 
@@ -50,19 +60,38 @@ fun BreathingScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val ambient = isAmbient()
+    LaunchedEffect(ambient) { viewModel.setAmbient(ambient) }
+    AmbientTicks { viewModel.onAmbientTick() }
+
     // Heart rate is optional: the session starts whatever the user answers.
-    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+    val heartRateLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         viewModel.start(pattern)
     }
-    LaunchedEffect(pattern) {
+    val startWithHeartRate = {
         if (HealthServicesHeartRateMonitor.hasPermission(context)) {
             viewModel.start(pattern)
         } else {
-            permissionLauncher.launch(HealthServicesHeartRateMonitor.permission)
+            heartRateLauncher.launch(HealthServicesHeartRateMonitor.permission)
+        }
+    }
+    // The Ongoing Activity needs the notification permission; the session runs without it.
+    var notificationsDenied by rememberSaveable { mutableStateOf(false) }
+    val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        notificationsDenied = !it
+        startWithHeartRate()
+    }
+    LaunchedEffect(pattern) {
+        if (hasNotificationPermission(context)) {
+            startWithHeartRate()
+        } else {
+            notificationLauncher.launch(NOTIFICATION_PERMISSION)
         }
     }
     BreathingContent(
         state = state,
+        ambient = ambient,
+        notificationsDenied = notificationsDenied,
         onStop = {
             viewModel.stop()
             onFinished()
@@ -71,7 +100,16 @@ fun BreathingScreen(
 }
 
 @Composable
-fun BreathingContent(state: BreathingUiState, onStop: () -> Unit) {
+fun BreathingContent(
+    state: BreathingUiState,
+    onStop: () -> Unit,
+    ambient: Boolean = false,
+    notificationsDenied: Boolean = false,
+) {
+    if (ambient) {
+        AmbientBreathing(state)
+        return
+    }
     val colors = MaterialTheme.colorScheme
     val phaseColor = when (state.breath.phase) {
         BreathPhase.INHALE -> colors.primary
@@ -112,12 +150,36 @@ fun BreathingContent(state: BreathingUiState, onStop: () -> Unit) {
                     color = Color.White,
                 )
                 HeartRateRow(state.heartRate)
+                if (notificationsDenied) {
+                    Text(
+                        stringResource(R.string.notifications_denied_hint),
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.testTag("notifications_hint"),
+                    )
+                }
             }
             FilledIconButton(
                 onClick = onStop,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp).size(40.dp).testTag("stop"),
             ) {
                 Icon(Icons.Rounded.Stop, contentDescription = "Stop")
+            }
+        }
+    }
+}
+
+/**
+ * Ambient layout: mostly black, no animation, and no value that changes faster than the ambient
+ * tick, so seconds and heart rate are placeholders.
+ */
+@Composable
+private fun AmbientBreathing(state: BreathingUiState) {
+    ScreenScaffold(timeText = {}) {
+        Box(Modifier.fillMaxSize().background(Color.Black).testTag("breathing"), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("${state.elapsedMillis / 60_000L} min", style = MaterialTheme.typography.titleLarge)
+                Text("Breathing", style = MaterialTheme.typography.labelSmall, modifier = Modifier.testTag("phase"))
+                Text("-- bpm", style = MaterialTheme.typography.labelSmall)
             }
         }
     }

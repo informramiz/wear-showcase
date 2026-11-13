@@ -1,4 +1,4 @@
-package com.codebyramiz.breathefocus.wear.di
+package com.codebyramiz.breathefocus.core.data.di
 
 import dagger.Module
 import dagger.Provides

@@ -4,16 +4,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codebyramiz.breathefocus.core.data.SessionRepository
 import com.codebyramiz.breathefocus.core.data.SettingsRepository
-import com.codebyramiz.breathefocus.core.data.sync.DataLayerSync
 import com.codebyramiz.breathefocus.core.data.time.today
 import com.codebyramiz.breathefocus.core.model.BreathingPattern
 import com.codebyramiz.breathefocus.core.model.DayTotal
 import com.codebyramiz.breathefocus.core.model.MindfulStats
 import com.codebyramiz.breathefocus.core.model.Session
+import com.codebyramiz.breathefocus.mobile.sync.SettingsPublisher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
 import javax.inject.Inject
-import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -42,8 +41,8 @@ sealed interface WatchSync {
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     sessions: SessionRepository,
-    private val settings: SettingsRepository,
-    private val sync: DataLayerSync,
+    settings: SettingsRepository,
+    private val publisher: SettingsPublisher,
     clock: Clock,
 ) : ViewModel() {
 
@@ -66,18 +65,13 @@ class HomeViewModel @Inject constructor(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), HomeUiState())
 
-    /** Saves locally first so the phone UI is right even when no watch is connected. */
+    /**
+     * Saves locally first so the phone UI is right even when no watch is connected. A send that
+     * fails stays pending and is retried at the next app start.
+     */
     fun selectPattern(pattern: BreathingPattern) {
         viewModelScope.launch {
-            settings.setDefaultPattern(pattern)
-            watchSync.value = try {
-                sync.publishDefaultPattern(pattern)
-                WatchSync.Sent
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                WatchSync.Failed
-            }
+            watchSync.value = if (publisher.selectAndPublish(pattern)) WatchSync.Sent else WatchSync.Failed
         }
     }
 

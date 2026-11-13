@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.PowerManager
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -20,12 +21,15 @@ import com.codebyramiz.breathefocus.wear.R
  * watch face and in the recents list, with a live stopwatch.
  */
 class OngoingSessionService : LifecycleService() {
+    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         val title = intent?.getStringExtra(EXTRA_TITLE) ?: getString(R.string.app_name)
         val startedAt = intent?.getLongExtra(EXTRA_STARTED_AT, SystemClock.elapsedRealtime())
             ?: SystemClock.elapsedRealtime()
+
+        if (intent?.getBooleanExtra(EXTRA_KEEP_AWAKE, false) == true) holdWakeLock()
 
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
@@ -79,9 +83,30 @@ class OngoingSessionService : LifecycleService() {
         return START_NOT_STICKY
     }
 
+    /** Held with a timeout, so the worst case is a bounded battery cost, never a leaked lock. */
+    private fun holdWakeLock() {
+        wakeLock?.release()
+        wakeLock = getSystemService(PowerManager::class.java)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "breathefocus:session")
+            .apply {
+                setReferenceCounted(false)
+                acquire(WAKE_LOCK_TIMEOUT_MILLIS)
+            }
+    }
+
+    override fun onDestroy() {
+        wakeLock?.release()
+        wakeLock = null
+        super.onDestroy()
+    }
+
     companion object {
         const val EXTRA_TITLE = "title"
         const val EXTRA_STARTED_AT = "started_at"
+        const val EXTRA_KEEP_AWAKE = "keep_awake"
+
+        // Longer than a breathing session is expected to run; the lock expires on its own after this.
+        private const val WAKE_LOCK_TIMEOUT_MILLIS = 15 * 60_000L
         private const val CHANNEL_ID = "sessions"
         private const val NOTIFICATION_ID = 42
     }
