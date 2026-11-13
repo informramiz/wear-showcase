@@ -1,7 +1,13 @@
 package com.codebyramiz.breathefocus.wear.surfaces
 
+import androidx.wear.watchface.complications.data.ComplicationType
+import androidx.wear.watchface.complications.data.ShortTextComplicationData
+import androidx.wear.watchface.complications.datasource.ComplicationRequest
 import com.codebyramiz.breathefocus.wear.complication.MindfulMinutesComplicationService
 import com.codebyramiz.breathefocus.wear.tile.BreatheTileService
+import java.time.Instant
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -23,8 +29,14 @@ class EntryPointServicesTest {
     }
 
     @Test
-    fun `complication service is created with its dependencies injected`() {
+    fun `complication service answers a request from its injected repository`() {
         val service = Robolectric.buildService(MindfulMinutesComplicationService::class.java).create().get()
-        assertNotNull(service)
+
+        val data = runBlocking {
+            service.onComplicationRequest(ComplicationRequest(1, ComplicationType.SHORT_TEXT, false))
+        }
+
+        val shortText = data as ShortTextComplicationData
+        assertEquals("0m", shortText.text.getTextAt(service.resources, Instant.now()).toString())
     }
 }

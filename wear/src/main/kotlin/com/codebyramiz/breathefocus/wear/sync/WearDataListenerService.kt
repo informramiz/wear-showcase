@@ -1,5 +1,6 @@
 package com.codebyramiz.breathefocus.wear.sync
 
+import android.util.Log
 import com.codebyramiz.breathefocus.core.data.SettingsRepository
 import com.codebyramiz.breathefocus.core.data.sync.DataLayerContract
 import com.codebyramiz.breathefocus.core.model.BreathingPattern
@@ -9,11 +10,9 @@ import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.WearableListenerService
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Receives the default pattern the user picked on the phone. */
 @AndroidEntryPoint
@@ -21,21 +20,25 @@ class WearDataListenerService : WearableListenerService() {
 
     @Inject lateinit var settings: SettingsRepository
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
+    /**
+     * Runs on a background thread. The save completes before returning: the system may unbind
+     * the service as soon as this callback ends, which would cancel work launched elsewhere.
+     */
     override fun onDataChanged(dataEvents: DataEventBuffer) {
-        // Read everything out before returning: the buffer is released afterwards.
-        val patterns = dataEvents
+        val latest = dataEvents
             .filter { it.type == DataEvent.TYPE_CHANGED && it.dataItem.uri.path == DataLayerContract.PATH_SETTINGS }
             .mapNotNull {
                 DataMapItem.fromDataItem(it.dataItem).dataMap.getString(DataLayerContract.KEY_DEFAULT_PATTERN)
             }
-        val latest = patterns.lastOrNull() ?: return
-        scope.launch { settings.setDefaultPattern(BreathingPattern.fromNameOrDefault(latest)) }
+            .lastOrNull() ?: return
+        val saved = runBlocking {
+            withTimeoutOrNull(SAVE_TIMEOUT) { settings.setDefaultPattern(BreathingPattern.fromNameOrDefault(latest)) }
+        }
+        if (saved == null) Log.w(TAG, "Timed out saving the default pattern from the phone")
     }
 
-    override fun onDestroy() {
-        scope.cancel()
-        super.onDestroy()
+    private companion object {
+        const val TAG = "WearDataListener"
+        val SAVE_TIMEOUT = 10.seconds
     }
 }

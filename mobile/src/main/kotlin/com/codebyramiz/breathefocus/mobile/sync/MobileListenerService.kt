@@ -8,42 +8,43 @@ import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.WearableListenerService
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 
-/** Receives session history the watch publishes on /breathe/sessions. */
+/** Receives the session history chunks the watch publishes under /breathe/sessions/. */
 @AndroidEntryPoint
 class MobileListenerService : WearableListenerService() {
 
     @Inject lateinit var importer: SessionImporter
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
+    /**
+     * Runs on a background thread. The import completes before returning: the system may unbind
+     * the service as soon as this callback ends, which would cancel work launched elsewhere.
+     */
     override fun onDataChanged(dataEvents: DataEventBuffer) {
-        // Copy the payloads out first: the buffer is released when this method returns.
+        // Each chunk is a self-contained session list; upserts make the order irrelevant.
         val payloads = dataEvents
-            .filter { it.type == DataEvent.TYPE_CHANGED && it.dataItem.uri.path == DataLayerContract.PATH_SESSIONS }
+            .filter { it.type == DataEvent.TYPE_CHANGED && isSessionItem(it.dataItem.uri.path) }
             .mapNotNull { DataMapItem.fromDataItem(it.dataItem).dataMap.getString(DataLayerContract.KEY_SESSIONS_JSON) }
-        val latest = payloads.lastOrNull() ?: return
-        scope.launch {
-            try {
-                importer.import(latest)
-            } catch (e: IllegalArgumentException) {
-                // kotlinx.serialization's SerializationException is an IllegalArgumentException.
-                Log.w(TAG, "Ignoring malformed session payload", e)
-            }
+        if (payloads.isEmpty()) return
+        val imported = runBlocking { withTimeoutOrNull(IMPORT_TIMEOUT) { payloads.forEach { importChunk(it) } } }
+        if (imported == null) Log.w(TAG, "Timed out importing session history from the watch")
+    }
+
+    private suspend fun importChunk(payload: String) {
+        try {
+            importer.import(payload)
+        } catch (e: IllegalArgumentException) {
+            // kotlinx.serialization's SerializationException is an IllegalArgumentException.
+            Log.w(TAG, "Ignoring malformed session payload", e)
         }
     }
 
-    override fun onDestroy() {
-        scope.cancel()
-        super.onDestroy()
-    }
+    private fun isSessionItem(path: String?): Boolean = DataLayerContract.sessionChunkIndex(path) != null
 
     private companion object {
         const val TAG = "MobileListener"
+        val IMPORT_TIMEOUT = 10.seconds
     }
 }

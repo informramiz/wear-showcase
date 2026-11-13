@@ -2,7 +2,6 @@ package com.codebyramiz.breathefocus.wear.ui.breathing
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.codebyramiz.breathefocus.core.data.SettingsRepository
 import com.codebyramiz.breathefocus.core.model.BreathState
 import com.codebyramiz.breathefocus.core.model.BreathingEngine
 import com.codebyramiz.breathefocus.core.model.BreathingPattern
@@ -18,14 +17,18 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
 import java.util.UUID
 import javax.inject.Inject
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class BreathingUiState(
@@ -36,6 +39,13 @@ data class BreathingUiState(
     val heartRate: HeartRate = HeartRate.Unavailable("Not started"),
 )
 
+/**
+ * Runs one breathing session. The session lives as long as this ViewModel's nav entry: leaving
+ * the screen clears the ViewModel, which ends and records the session.
+ *
+ * Phase haptics keep running while the screen is off, scheduled once per phase. The ring
+ * animation and heart-rate measurement run only while the UI collects [state].
+ */
 @HiltViewModel
 class BreathingViewModel @Inject constructor(
     private val ticker: SessionTicker,
@@ -43,75 +53,88 @@ class BreathingViewModel @Inject constructor(
     private val heartRateMonitor: HeartRateMonitor,
     private val recorder: SessionRecorder,
     private val notifier: SessionNotifier,
-    settings: SettingsRepository,
     private val clock: Clock,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(BreathingUiState())
-    val state: StateFlow<BreathingUiState> = _state.asStateFlow()
+    private class Active(val pattern: BreathingPattern, val startedAt: Long, val startedAtEpochMillis: Long)
 
-    /** Pattern the phone (or a previous run) picked: what Home pre-selects. */
-    val defaultPattern: StateFlow<BreathingPattern> =
-        settings.defaultPattern.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BreathingPattern.DEFAULT)
-
-    private var sessionJob: Job? = null
-    private var startedAtEpochMillis = 0L
+    private val active = MutableStateFlow<Active?>(null)
+    private val finished = MutableStateFlow(BreathingUiState())
     private val heartRateSamples = mutableListOf<Int>()
+    private var hapticsJob: Job? = null
 
-    fun start(pattern: BreathingPattern, startedAtElapsedRealtime: Long = 0L) {
-        if (_state.value.running) return
-        startedAtEpochMillis = clock.millis()
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val state: StateFlow<BreathingUiState> = active
+        .flatMapLatest { session -> if (session == null) finished else liveState(session) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BreathingUiState())
+
+    fun start(pattern: BreathingPattern) {
+        if (active.value != null) return
+        val session = Active(pattern, startedAt = ticker.now(), startedAtEpochMillis = clock.millis())
         heartRateSamples.clear()
-        _state.value = BreathingUiState(
-            pattern = pattern,
-            running = true,
-            breath = BreathingEngine.stateAt(pattern, 0),
-            heartRate = HeartRate.Acquiring,
-        )
-        notifier.started(pattern.displayName + " breathing", startedAtElapsedRealtime)
-        sessionJob = viewModelScope.launch {
-            launch {
-                heartRateMonitor.readings().collect { reading ->
-                    if (reading is HeartRate.Bpm) heartRateSamples += reading.value
-                    _state.update { it.copy(heartRate = reading) }
-                }
-            }
-            var lastPhaseIndex = -1L
-            ticker.elapsedMillis().collect { elapsed ->
-                val phaseIndex = BreathingEngine.phaseIndexAt(pattern, elapsed)
-                val breath = BreathingEngine.stateAt(pattern, elapsed)
-                if (phaseIndex != lastPhaseIndex) {
-                    lastPhaseIndex = phaseIndex
-                    haptics.phaseChanged(breath.phase)
-                }
-                _state.update { it.copy(elapsedMillis = elapsed, breath = breath) }
-            }
-        }
+        active.value = session
+        notifier.started(pattern.displayName + " breathing", session.startedAt)
+        hapticsJob = viewModelScope.launch { phaseHaptics(session) }
     }
 
     fun stop() {
-        val current = _state.value
-        if (!current.running) return
-        sessionJob?.cancel()
-        sessionJob = null
+        val session = active.value ?: return
+        val elapsed = ticker.now() - session.startedAt
+        hapticsJob?.cancel()
+        hapticsJob = null
         notifier.stopped()
-        _state.update { it.copy(running = false) }
-        val session = Session(
-            id = UUID.randomUUID().toString(),
-            type = SessionType.BREATHING,
-            pattern = current.pattern,
-            startedAtEpochMillis = startedAtEpochMillis,
-            durationMillis = current.elapsedMillis,
-            averageHeartRate = heartRateSamples.takeIf { it.isNotEmpty() }?.average()?.toInt(),
+        finished.value = BreathingUiState(
+            pattern = session.pattern,
+            running = false,
+            elapsedMillis = elapsed,
+            breath = BreathingEngine.stateAt(session.pattern, elapsed),
         )
-        viewModelScope.launch { recorder.record(session) }
+        active.value = null
+        recorder.finish(
+            Session(
+                id = UUID.randomUUID().toString(),
+                type = SessionType.BREATHING,
+                pattern = session.pattern,
+                startedAtEpochMillis = session.startedAtEpochMillis,
+                durationMillis = elapsed,
+                averageHeartRate = heartRateSamples.takeIf { it.isNotEmpty() }?.average()?.toInt(),
+            ),
+        )
     }
 
-    /** Resolves the pattern for a tile/launcher quick start. */
-    suspend fun resolveDefaultPattern(): BreathingPattern = defaultPattern.first()
+    private fun liveState(session: Active): Flow<BreathingUiState> = combine(
+        ticker.frames(),
+        heartRateMonitor.readings()
+            .onEach { if (it is HeartRate.Bpm) heartRateSamples += it.value }
+            .onStart { emit(HeartRate.Acquiring) },
+    ) { now, heartRate ->
+        val elapsed = now - session.startedAt
+        BreathingUiState(
+            pattern = session.pattern,
+            running = true,
+            elapsedMillis = elapsed,
+            breath = BreathingEngine.stateAt(session.pattern, elapsed),
+            heartRate = heartRate,
+        )
+    }
+
+    /** Buzzes at each phase change, sleeping until the next one instead of polling. */
+    private suspend fun phaseHaptics(session: Active) {
+        var lastPhaseIndex = -1L
+        while (true) {
+            val elapsed = ticker.now() - session.startedAt
+            val phaseIndex = BreathingEngine.phaseIndexAt(session.pattern, elapsed)
+            val breath = BreathingEngine.stateAt(session.pattern, elapsed)
+            if (phaseIndex != lastPhaseIndex) {
+                lastPhaseIndex = phaseIndex
+                haptics.phaseChanged(breath.phase)
+            }
+            delay(breath.phaseRemainingMillis.coerceAtLeast(1))
+        }
+    }
 
     override fun onCleared() {
-        // Leaving the screen mid-session still records it.
-        if (_state.value.running) stop()
+        // The nav entry was popped (swipe back or stop): end and record the session.
+        stop()
     }
 }

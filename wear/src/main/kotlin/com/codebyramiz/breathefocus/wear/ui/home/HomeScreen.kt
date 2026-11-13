@@ -32,7 +32,6 @@ import androidx.wear.compose.material3.lazy.transformedHeight
 import androidx.wear.compose.ui.tooling.preview.WearPreviewDevices
 import com.codebyramiz.breathefocus.core.model.BreathingPattern
 import com.codebyramiz.breathefocus.core.model.MindfulStats
-import com.codebyramiz.breathefocus.wear.ui.breathing.BreathingViewModel
 import com.codebyramiz.breathefocus.wear.ui.history.HistoryViewModel
 import com.codebyramiz.breathefocus.wear.ui.theme.BreatheTheme
 
@@ -41,10 +40,10 @@ fun HomeScreen(
     onBreathe: (BreathingPattern) -> Unit,
     onFocus: () -> Unit,
     onHistory: () -> Unit,
-    breathingViewModel: BreathingViewModel = hiltViewModel(),
+    homeViewModel: HomeViewModel = hiltViewModel(),
     historyViewModel: HistoryViewModel = hiltViewModel(),
 ) {
-    val defaultPattern by breathingViewModel.defaultPattern.collectAsStateWithLifecycle()
+    val defaultPattern by homeViewModel.defaultPattern.collectAsStateWithLifecycle()
     val history by historyViewModel.state.collectAsStateWithLifecycle()
     HomeContent(
         defaultPattern = defaultPattern,

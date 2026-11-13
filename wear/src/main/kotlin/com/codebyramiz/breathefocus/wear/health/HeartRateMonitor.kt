@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.health.services.client.HealthServices
 import androidx.health.services.client.MeasureCallback
@@ -16,11 +17,13 @@ import androidx.health.services.client.getCapabilities
 import androidx.health.services.client.unregisterMeasureCallback
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
+import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 
 sealed interface HeartRate {
     /** No sensor, no permission, or Health Services missing: the session still runs. */
@@ -43,12 +46,19 @@ class HealthServicesHeartRateMonitor @Inject constructor(@ApplicationContext pri
         if (!hasPermission(context)) return flowOf(HeartRate.Unavailable("Permission needed"))
         val measureClient = HealthServices.getClient(context).measureClient
         return callbackFlow {
-            val supported = runCatching {
+            val supported = try {
                 DataType.HEART_RATE_BPM in measureClient.getCapabilities().supportedDataTypesMeasure
-            }.getOrDefault(false)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Health Services capability query failed", e)
+                trySend(HeartRate.Unavailable("Couldn't reach heart-rate sensor"))
+                awaitClose()
+                return@callbackFlow
+            }
             if (!supported) {
                 trySend(HeartRate.Unavailable("No heart-rate sensor"))
-                awaitClose { }
+                awaitClose()
                 return@callbackFlow
             }
             trySend(HeartRate.Acquiring)
@@ -63,11 +73,26 @@ class HealthServicesHeartRateMonitor @Inject constructor(@ApplicationContext pri
                     val bpm = data.getData(DataType.HEART_RATE_BPM).lastOrNull()?.value ?: return
                     if (bpm > 0) trySend(HeartRate.Bpm(bpm.toInt()))
                 }
+
+                override fun onRegistrationFailed(throwable: Throwable) {
+                    Log.w(TAG, "Heart-rate registration failed", throwable)
+                    trySend(HeartRate.Unavailable("Heart rate unavailable"))
+                }
             }
             measureClient.registerMeasureCallback(DataType.HEART_RATE_BPM, callback)
-            awaitClose {
-                runBlocking {
-                    runCatching { measureClient.unregisterMeasureCallback(DataType.HEART_RATE_BPM, callback) }
+            try {
+                awaitClose()
+            } finally {
+                // Suspend (never block) while Health Services unregisters, even though the
+                // collector is already cancelled.
+                withContext(NonCancellable) {
+                    try {
+                        measureClient.unregisterMeasureCallback(DataType.HEART_RATE_BPM, callback)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Heart-rate unregistration failed", e)
+                    }
                 }
             }
         }
@@ -84,5 +109,7 @@ class HealthServicesHeartRateMonitor @Inject constructor(@ApplicationContext pri
 
         fun hasPermission(context: Context): Boolean =
             ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+
+        private const val TAG = "HeartRateMonitor"
     }
 }

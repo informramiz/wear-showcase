@@ -13,6 +13,8 @@ import com.codebyramiz.breathefocus.core.data.SettingsRepository
 import com.codebyramiz.breathefocus.core.data.db.BreatheDatabase
 import com.codebyramiz.breathefocus.core.data.db.SessionDao
 import com.codebyramiz.breathefocus.core.data.sync.DataLayerSync
+import com.codebyramiz.breathefocus.core.data.sync.DataStorePendingSessionSync
+import com.codebyramiz.breathefocus.core.data.sync.PendingSessionSync
 import com.codebyramiz.breathefocus.core.data.sync.WearableDataLayerSync
 import com.google.android.gms.wearable.DataClient
 import com.google.android.gms.wearable.Wearable
@@ -33,6 +35,8 @@ abstract class DataModule {
     @Binds abstract fun settingsRepository(impl: DataStoreSettingsRepository): SettingsRepository
 
     @Binds abstract fun dataLayerSync(impl: WearableDataLayerSync): DataLayerSync
+
+    @Binds abstract fun pendingSessionSync(impl: DataStorePendingSessionSync): PendingSessionSync
 
     companion object {
         @Provides
