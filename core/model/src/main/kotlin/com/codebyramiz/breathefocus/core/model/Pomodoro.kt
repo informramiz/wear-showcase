@@ -2,10 +2,7 @@ package com.codebyramiz.breathefocus.core.model
 
 enum class FocusPhase { FOCUS, BREAK }
 
-data class PomodoroConfig(
-    val focusMillis: Long = 25 * 60_000L,
-    val breakMillis: Long = 5 * 60_000L,
-)
+data class PomodoroConfig(val focusMillis: Long = 25 * 60_000L, val breakMillis: Long = 5 * 60_000L)
 
 data class PomodoroState(
     val phase: FocusPhase,
