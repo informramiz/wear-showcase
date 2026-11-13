@@ -42,6 +42,14 @@ It shows a session with heart rate, history, the complication, the tile, and the
 **Sync**: the watch publishes the last 30 days of sessions as a `DataItem`; the phone publishes
 the default pattern. Both sides listen with a `WearableListenerService`.
 
+Sync is verified end to end on a paired Wear OS emulator and phone emulator: a real session
+finished on the watch shows up in the phone's recent sessions and chart.
+
+<p>
+  <img src="docs/demo/sync-watch.png" width="200" alt="Session finished on the watch">
+  <img src="docs/demo/sync-phone.png" width="200" alt="Same session on the phone">
+</p>
+
 ## Architecture
 
 ```mermaid
