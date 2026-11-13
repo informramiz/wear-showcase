@@ -98,17 +98,17 @@ class BreathingViewModelTest {
         val vm = viewModel()
         vm.start(BreathingPattern.BOX)
         heartRate.readings.emit(HeartRate.Unavailable("No sensor"))
-        ticker.elapsed.emit(30_000)
+        ticker.elapsed.emit(90_000)
         vm.stop()
 
         assertEquals(null, repository.sessions.value.single().averageHeartRate)
     }
 
     @Test
-    fun `sessions shorter than ten seconds are discarded`() = runTest {
+    fun `sessions shorter than a minute are discarded`() = runTest {
         val vm = viewModel()
         vm.start(BreathingPattern.BOX)
-        ticker.elapsed.emit(9_000)
+        ticker.elapsed.emit(59_000)
         vm.stop()
 
         assertTrue(repository.sessions.value.isEmpty())

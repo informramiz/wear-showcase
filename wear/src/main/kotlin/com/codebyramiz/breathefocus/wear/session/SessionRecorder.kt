@@ -33,6 +33,7 @@ class SessionRecorder @Inject constructor(
     }
 
     private companion object {
-        const val MIN_DURATION_MILLIS = 10_000L
+        // Mindful minutes are counted in whole minutes, so shorter sessions add nothing.
+        const val MIN_DURATION_MILLIS = 60_000L
     }
 }
