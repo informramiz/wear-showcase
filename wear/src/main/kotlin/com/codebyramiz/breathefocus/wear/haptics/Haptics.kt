@@ -1,7 +1,9 @@
 package com.codebyramiz.breathefocus.wear.haptics
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.os.Build
+import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -34,7 +36,20 @@ class VibratorHaptics @Inject constructor(@ApplicationContext context: Context) 
         vibrator.vibrate(effect)
     }
 
+    /**
+     * Sent from an alarm while the app has no foreground UI. A vibration without an alarm usage is
+     * dropped in that state (`ignored_background`), so the buzz carries the alarm usage.
+     */
     override fun focusBlockFinished() {
-        vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 200, 120, 200, 120, 400), -1))
+        val effect = VibrationEffect.createWaveform(longArrayOf(0, 200, 120, 200, 120, 400), -1)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            vibrator.vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(
+                effect,
+                AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build(),
+            )
+        }
     }
 }
