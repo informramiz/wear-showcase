@@ -5,12 +5,17 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
+    # Self-hosted runner: never run fork PRs on it.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, buildpc]
     timeout-minutes: 45
     # buildPC (Windows): JDK 21 and the Android SDK are preinstalled there.
