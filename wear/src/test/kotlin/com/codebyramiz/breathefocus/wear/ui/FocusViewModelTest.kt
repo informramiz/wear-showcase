@@ -82,6 +82,15 @@ class FocusViewModelTest {
     }
 
     @Test
+    fun `an alarm armed for an earlier session is ignored`() = runTest {
+        vm.start()
+
+        boundaries.onAlarm(expectedSessionId = "an-earlier-session")
+
+        assertEquals(0, haptics.blocksFinished)
+    }
+
+    @Test
     fun `an alarm with no focus session running does nothing`() = runTest {
         boundaries.onAlarm()
 

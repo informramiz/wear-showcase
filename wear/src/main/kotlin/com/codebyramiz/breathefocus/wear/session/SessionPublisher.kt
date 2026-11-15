@@ -28,8 +28,11 @@ class SessionPublisher @Inject constructor(
         try {
             val queued = outbox.pendingIds()
             val since = clock.millis() - Duration.ofDays(DataLayerContract.SYNC_WINDOW_DAYS).toMillis()
-            sync.publishSessions(repository.getSince(since))
-            outbox.acknowledge(queued)
+            val recent = repository.getSince(since)
+            sync.publishSessions(recent)
+            // Only sessions that were in this snapshot are done; one older than the sync window stays queued.
+            val published = recent.mapTo(HashSet()) { it.id }
+            outbox.acknowledge(queued.filter { it in published })
             true
         } catch (e: CancellationException) {
             throw e

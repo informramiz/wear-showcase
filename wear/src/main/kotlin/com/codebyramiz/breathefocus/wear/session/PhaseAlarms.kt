@@ -22,7 +22,8 @@ import kotlinx.coroutines.launch
 
 /** A wake-up call at a moment on the [android.os.SystemClock.elapsedRealtime] time base. */
 interface PhaseAlarms {
-    fun schedule(triggerAtElapsedRealtime: Long)
+    /** [sessionId] travels with the alarm so a late delivery for an earlier session can be ignored. */
+    fun schedule(triggerAtElapsedRealtime: Long, sessionId: String = "")
 
     fun cancel()
 }
@@ -35,31 +36,35 @@ interface PhaseAlarms {
 class AlarmManagerPhaseAlarms @Inject constructor(@ApplicationContext private val context: Context) : PhaseAlarms {
     private val alarmManager = context.getSystemService(AlarmManager::class.java)
 
-    private fun pendingIntent() = PendingIntent.getBroadcast(
+    private fun pendingIntent(sessionId: String = "") = PendingIntent.getBroadcast(
         context,
         0,
-        Intent(context, PhaseAlarmReceiver::class.java),
+        Intent(context, PhaseAlarmReceiver::class.java).putExtra(EXTRA_SESSION_ID, sessionId),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
-    override fun schedule(triggerAtElapsedRealtime: Long) {
+    override fun schedule(triggerAtElapsedRealtime: Long, sessionId: String) {
         // Exact alarms need no grant before API 31.
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()) {
             alarmManager.setExactAndAllowWhileIdle(
                 AlarmManager.ELAPSED_REALTIME_WAKEUP,
                 triggerAtElapsedRealtime,
-                pendingIntent(),
+                pendingIntent(sessionId),
             )
         } else {
             alarmManager.setAndAllowWhileIdle(
                 AlarmManager.ELAPSED_REALTIME_WAKEUP,
                 triggerAtElapsedRealtime,
-                pendingIntent(),
+                pendingIntent(sessionId),
             )
         }
     }
 
     override fun cancel() = alarmManager.cancel(pendingIntent())
+
+    companion object {
+        const val EXTRA_SESSION_ID = "sessionId"
+    }
 }
 
 /** Buzzes at each Pomodoro boundary of the persisted focus session and arms the next one. */
@@ -76,11 +81,13 @@ class PomodoroBoundaries @Inject constructor(
     fun scheduleNext(session: ActiveSession) {
         val now = ticker.now()
         val elapsed = now - session.startedAtElapsedRealtime
-        alarms.schedule(now + Pomodoro.stateAt(config, elapsed).remainingMillis)
+        alarms.schedule(now + Pomodoro.stateAt(config, elapsed).remainingMillis, session.id)
     }
 
-    suspend fun onAlarm() {
+    /** [expectedSessionId] is the session the alarm was armed for; an alarm for any other session is dropped. */
+    suspend fun onAlarm(expectedSessionId: String? = null) {
         val session = store.current()?.takeIf { it.type == SessionType.FOCUS } ?: return
+        if (expectedSessionId != null && session.id != expectedSessionId) return
         haptics.focusBlockFinished()
         scheduleNext(session)
     }
@@ -97,7 +104,7 @@ class PhaseAlarmReceiver : BroadcastReceiver() {
         val pending = goAsync()
         scope.launch {
             try {
-                boundaries.onAlarm()
+                boundaries.onAlarm(intent.getStringExtra(AlarmManagerPhaseAlarms.EXTRA_SESSION_ID))
             } finally {
                 pending.finish()
             }

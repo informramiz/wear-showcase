@@ -45,7 +45,9 @@ It shows a session with heart rate, history, the complication, the tile, and the
 
 **Sync**: the watch publishes the last 30 days of sessions as chunked `DataItem`s at
 `/breathe/sessions/<n>` and removes its own stale chunks; the phone publishes the default pattern at
-`/breathe/settings`. A durable outbox retries until the phone has the data. Both sides listen with a `WearableListenerService`.
+`/breathe/settings`. A durable outbox keeps a finished session queued until the Data Layer accepts a snapshot containing it;
+the Data Layer then delivers it when the phone is reachable (acceptance is not a delivery receipt).
+Both sides listen with a `WearableListenerService`.
 
 Sync is verified end to end on a paired Wear OS emulator and phone emulator: a real session
 finished on the watch shows up in the phone's recent sessions and chart. The full emulator smoke

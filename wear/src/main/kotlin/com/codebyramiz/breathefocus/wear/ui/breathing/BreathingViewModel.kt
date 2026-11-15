@@ -103,7 +103,7 @@ class BreathingViewModel @Inject constructor(
 
     fun stop() {
         val session = active.value ?: return
-        val elapsed = ticker.now() - session.startedAt
+        val elapsed = (ticker.now() - session.startedAt).coerceAtMost(MAX_SESSION_MILLIS)
         hapticsJob?.cancel()
         hapticsJob = null
         notifier.stopped()
@@ -168,7 +168,7 @@ class BreathingViewModel @Inject constructor(
 
     companion object {
         /** Longest a breathing session runs; matches the bounded wake lock that keeps its cues on time. */
-        const val MAX_SESSION_MILLIS = 15 * 60_000L
+        const val MAX_SESSION_MILLIS = ActiveSessions.MAX_BREATHING_MILLIS
     }
 
     override fun onCleared() {

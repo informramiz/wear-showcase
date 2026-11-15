@@ -20,7 +20,7 @@ import com.codebyramiz.breathefocus.wear.MainActivity
 import com.codebyramiz.breathefocus.wear.R
 import dagger.hilt.android.AndroidEntryPoint
 import java.time.Clock
-import java.time.Duration
+import java.time.Instant
 import java.time.ZonedDateTime
 import javax.inject.Inject
 import kotlinx.coroutines.flow.first
@@ -44,10 +44,11 @@ class MindfulMinutesComplicationService : SuspendingTimelineComplicationDataSour
         val minutes = MindfulStats(clock.zone).minutesOn(today, repository.observeSince(startOfDay).first())
         val current = build(request.complicationType, minutes) ?: return null
         val midnight = today.plusDays(1).atStartOfDay(now.zone).toInstant()
-        val tomorrow = build(request.complicationType, 0) ?: return ComplicationDataTimeline(current, emptyList())
+        // Zero is the fallback outside any entry, so a lapsed refresh can never show an old day's total.
+        val zero = build(request.complicationType, 0) ?: return ComplicationDataTimeline(current, emptyList())
         return ComplicationDataTimeline(
-            current,
-            listOf(TimelineEntry(TimeInterval(midnight, midnight.plus(Duration.ofDays(1))), tomorrow)),
+            zero,
+            listOf(TimelineEntry(TimeInterval(Instant.ofEpochMilli(startOfDay), midnight), current)),
         )
     }
 

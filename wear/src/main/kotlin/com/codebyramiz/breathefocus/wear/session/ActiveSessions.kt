@@ -97,7 +97,11 @@ class ActiveSessions @Inject constructor(
             wallClockMillis = clock.millis() - startedAtEpochMillis,
             rebooted = if (bootCount == 0) null else bootCount != ticker.bootCount(),
         )
-        val counted = if (type == SessionType.FOCUS) Pomodoro.focusedMillis(PomodoroConfig(), elapsed) else elapsed
+        val counted = when (type) {
+            SessionType.FOCUS -> Pomodoro.focusedMillis(PomodoroConfig(), elapsed)
+            // Cues stop at the breathing limit, so time beyond it was never a guided session.
+            SessionType.BREATHING -> elapsed.coerceAtMost(MAX_BREATHING_MILLIS)
+        }
         return Session(
             id = id,
             type = type,
@@ -111,6 +115,7 @@ class ActiveSessions @Inject constructor(
     internal companion object {
         /** Longest a recovered session may count, so a long-dead process does not credit hours. */
         const val MAX_RECOVERED_MILLIS = 2 * 60 * 60_000L
+        const val MAX_BREATHING_MILLIS = 15 * 60_000L
         private const val CLOCK_DISAGREEMENT_MILLIS = 60_000L
 
         /**

@@ -38,11 +38,13 @@ class EntryPointServicesTest {
             service.onComplicationRequest(ComplicationRequest(1, ComplicationType.SHORT_TEXT, false))
         }!!
 
-        val today = timeline.defaultComplicationData as ShortTextComplicationData
+        val entry = timeline.timelineEntries.single()
+        val today = entry.complicationData as ShortTextComplicationData
         assertEquals("0m", today.text.getTextAt(service.resources, Instant.now()).toString())
-        // A second entry takes over at the next local midnight, so yesterday's total never lingers.
-        val next = timeline.timelineEntries.single()
-        assertTrue(next.validity.start.isAfter(Instant.now()))
-        assertEquals(Duration.ofDays(1), Duration.between(next.validity.start, next.validity.end))
+        // Today's total is bounded by local midnight; the fallback outside it is zero.
+        assertTrue(entry.validity.end.isAfter(Instant.now()))
+        assertTrue(Duration.between(Instant.now(), entry.validity.end) <= Duration.ofDays(1))
+        val fallback = timeline.defaultComplicationData as ShortTextComplicationData
+        assertEquals("0m", fallback.text.getTextAt(service.resources, Instant.now()).toString())
     }
 }
