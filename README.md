@@ -43,7 +43,8 @@ It shows a session with heart rate, history, the complication, the tile, and the
 the default pattern. Both sides listen with a `WearableListenerService`.
 
 Sync is verified end to end on a paired Wear OS emulator and phone emulator: a real session
-finished on the watch shows up in the phone's recent sessions and chart.
+finished on the watch shows up in the phone's recent sessions and chart. The full emulator smoke
+(permissions, process-death recovery, focus session, tile) is in [docs/demo/smoke](docs/demo/smoke/README.md).
 
 <p>
   <img src="docs/demo/sync-watch.png" width="200" alt="Session finished on the watch">
@@ -138,4 +139,4 @@ On the emulator, heart rate comes from the emulator's synthetic sensor.
 ./gradlew ktlintCheck test lint assembleDebug
 ```
 
-These are the same steps CI runs ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+These are the same steps CI runs ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) on a self-hosted runner.
