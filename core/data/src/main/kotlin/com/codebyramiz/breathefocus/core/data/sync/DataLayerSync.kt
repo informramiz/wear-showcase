@@ -4,6 +4,7 @@ import android.net.Uri
 import com.codebyramiz.breathefocus.core.model.BreathingPattern
 import com.codebyramiz.breathefocus.core.model.Session
 import com.google.android.gms.wearable.DataClient
+import com.google.android.gms.wearable.NodeClient
 import com.google.android.gms.wearable.PutDataMapRequest
 import javax.inject.Inject
 import kotlinx.coroutines.tasks.await
@@ -14,7 +15,10 @@ interface DataLayerSync {
     suspend fun publishDefaultPattern(pattern: BreathingPattern)
 }
 
-class WearableDataLayerSync @Inject constructor(private val dataClient: DataClient) : DataLayerSync {
+class WearableDataLayerSync @Inject constructor(
+    private val dataClient: DataClient,
+    private val nodeClient: NodeClient,
+) : DataLayerSync {
 
     /**
      * Writes one item per chunk, then deletes chunks left over from a longer earlier history.
@@ -32,8 +36,10 @@ class WearableDataLayerSync @Inject constructor(private val dataClient: DataClie
         deleteStaleChunks(keep = chunks.size)
     }
 
+    /** Only this node's own chunks: another watch's history is its own to manage. */
     private suspend fun deleteStaleChunks(keep: Int) {
-        val prefix = Uri.parse("wear://*${DataLayerContract.PATH_SESSIONS}")
+        val localNodeId = nodeClient.localNode.await().id
+        val prefix = Uri.parse("wear://$localNodeId${DataLayerContract.PATH_SESSIONS}")
         val buffer = dataClient.getDataItems(prefix, DataClient.FILTER_PREFIX).await()
         val stale = try {
             buffer.map { it.uri }.filter { uri ->

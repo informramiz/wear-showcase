@@ -46,7 +46,8 @@ data class BreathingUiState(
  * (fresh launch) instead of being lost.
  *
  * Phase haptics keep running while the screen is off: the foreground service holds a bounded
- * wake lock so the delays below are not stalled by deep sleep. The ring animation and heart-rate
+ * wake lock so the delays below are not stalled by deep sleep. A session therefore ends on its own
+ * after [MAX_SESSION_MILLIS]. The ring animation and heart-rate
  * measurement run only while the UI collects [state].
  */
 @HiltViewModel
@@ -150,6 +151,11 @@ class BreathingViewModel @Inject constructor(
         var lastPhaseIndex = -1L
         while (true) {
             val elapsed = ticker.now() - session.startedAt
+            if (elapsed >= MAX_SESSION_MILLIS) {
+                // The service's wake lock has expired, so cues could no longer be on time.
+                stop()
+                return
+            }
             val phaseIndex = BreathingEngine.phaseIndexAt(session.pattern, elapsed)
             val breath = BreathingEngine.stateAt(session.pattern, elapsed)
             if (phaseIndex != lastPhaseIndex) {
@@ -158,6 +164,11 @@ class BreathingViewModel @Inject constructor(
             }
             delay(breath.phaseRemainingMillis.coerceAtLeast(1))
         }
+    }
+
+    companion object {
+        /** Longest a breathing session runs; matches the bounded wake lock that keeps its cues on time. */
+        const val MAX_SESSION_MILLIS = 15 * 60_000L
     }
 
     override fun onCleared() {

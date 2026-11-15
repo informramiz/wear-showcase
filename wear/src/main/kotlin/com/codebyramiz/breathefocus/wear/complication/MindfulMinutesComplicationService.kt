@@ -9,31 +9,46 @@ import androidx.wear.watchface.complications.data.MonochromaticImage
 import androidx.wear.watchface.complications.data.PlainComplicationText
 import androidx.wear.watchface.complications.data.RangedValueComplicationData
 import androidx.wear.watchface.complications.data.ShortTextComplicationData
+import androidx.wear.watchface.complications.datasource.ComplicationDataTimeline
 import androidx.wear.watchface.complications.datasource.ComplicationRequest
-import androidx.wear.watchface.complications.datasource.SuspendingComplicationDataSourceService
+import androidx.wear.watchface.complications.datasource.SuspendingTimelineComplicationDataSourceService
+import androidx.wear.watchface.complications.datasource.TimeInterval
+import androidx.wear.watchface.complications.datasource.TimelineEntry
 import com.codebyramiz.breathefocus.core.data.SessionRepository
 import com.codebyramiz.breathefocus.core.model.MindfulStats
 import com.codebyramiz.breathefocus.wear.MainActivity
 import com.codebyramiz.breathefocus.wear.R
 import dagger.hilt.android.AndroidEntryPoint
 import java.time.Clock
-import java.time.LocalDate
+import java.time.Duration
+import java.time.ZonedDateTime
 import javax.inject.Inject
 import kotlinx.coroutines.flow.first
 
 /** "Today's mindful minutes" for any watch face, as short text or a ranged ring toward the goal. */
 @AndroidEntryPoint
-class MindfulMinutesComplicationService : SuspendingComplicationDataSourceService() {
+class MindfulMinutesComplicationService : SuspendingTimelineComplicationDataSourceService() {
 
     @Inject lateinit var repository: SessionRepository
 
     @Inject lateinit var clock: Clock
 
-    override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationData? {
-        val today = LocalDate.now(clock)
-        val startOfDay = today.atStartOfDay(clock.zone).toInstant().toEpochMilli()
+    /**
+     * Today's total now, plus a zero-minute entry that takes over at the next local midnight,
+     * so the face never labels yesterday's minutes as today's while waiting for a refresh.
+     */
+    override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationDataTimeline? {
+        val now = ZonedDateTime.now(clock)
+        val today = now.toLocalDate()
+        val startOfDay = today.atStartOfDay(now.zone).toInstant().toEpochMilli()
         val minutes = MindfulStats(clock.zone).minutesOn(today, repository.observeSince(startOfDay).first())
-        return build(request.complicationType, minutes)
+        val current = build(request.complicationType, minutes) ?: return null
+        val midnight = today.plusDays(1).atStartOfDay(now.zone).toInstant()
+        val tomorrow = build(request.complicationType, 0) ?: return ComplicationDataTimeline(current, emptyList())
+        return ComplicationDataTimeline(
+            current,
+            listOf(TimelineEntry(TimeInterval(midnight, midnight.plus(Duration.ofDays(1))), tomorrow)),
+        )
     }
 
     override fun getPreviewData(type: ComplicationType): ComplicationData? = build(type, PREVIEW_MINUTES)

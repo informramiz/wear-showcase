@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codebyramiz.breathefocus.core.data.SessionRepository
 import com.codebyramiz.breathefocus.core.data.SettingsRepository
+import com.codebyramiz.breathefocus.core.data.time.TimeChanges
 import com.codebyramiz.breathefocus.core.data.time.today
 import com.codebyramiz.breathefocus.core.model.BreathingPattern
 import com.codebyramiz.breathefocus.core.model.DayTotal
@@ -43,18 +44,19 @@ class HomeViewModel @Inject constructor(
     sessions: SessionRepository,
     settings: SettingsRepository,
     private val publisher: SettingsPublisher,
-    clock: Clock,
+    private val clock: Clock,
+    timeChanges: TimeChanges,
 ) : ViewModel() {
 
-    private val stats = MindfulStats(clock.zone)
     private val watchSync = MutableStateFlow<WatchSync>(WatchSync.Idle)
 
     val state: StateFlow<HomeUiState> = combine(
         sessions.observeAll(),
         settings.defaultPattern,
         watchSync,
-        clock.today(),
+        clock.today(timeChanges.events),
     ) { all, pattern, syncState, today ->
+        val stats = MindfulStats(clock.zone)
         HomeUiState(
             week = stats.lastSevenDays(today, all),
             todayMinutes = stats.minutesOn(today, all),

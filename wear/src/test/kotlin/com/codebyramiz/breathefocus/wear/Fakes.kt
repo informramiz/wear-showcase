@@ -35,6 +35,10 @@ import kotlinx.coroutines.test.TestCoroutineScheduler
 class FakeTicker(private val scheduler: TestCoroutineScheduler) : SessionTicker {
     override fun now(): Long = scheduler.currentTime
 
+    var boot = 1
+
+    override fun bootCount(): Int = boot
+
     override fun frames(): Flow<Long> = flow {
         while (true) {
             emit(now())

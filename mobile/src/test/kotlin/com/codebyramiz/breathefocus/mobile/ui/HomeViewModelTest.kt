@@ -1,6 +1,7 @@
 package com.codebyramiz.breathefocus.mobile.ui
 
 import com.codebyramiz.breathefocus.core.data.sync.DataLayerCoordinator
+import com.codebyramiz.breathefocus.core.data.time.TimeChanges
 import com.codebyramiz.breathefocus.core.model.BreathingPattern
 import com.codebyramiz.breathefocus.mobile.FakeSessionRepository
 import com.codebyramiz.breathefocus.mobile.FakeSettings
@@ -40,7 +41,8 @@ class HomeViewModelTest {
     private fun publisher(sync: FakeSync) =
         SettingsPublisher(settings, sync, DataLayerCoordinator(), CoroutineScope(main.dispatcher))
 
-    private fun viewModel(sync: FakeSync = FakeSync()) = HomeViewModel(sessions, settings, publisher(sync), clock)
+    private fun viewModel(sync: FakeSync = FakeSync()) =
+        HomeViewModel(sessions, settings, publisher(sync), clock, TimeChanges.None)
 
     @Test
     fun `aggregates today, streak, week and recent from synced sessions`() = runTest {
@@ -94,7 +96,7 @@ class HomeViewModelTest {
         val beforeMidnight = Instant.parse("2026-11-13T23:59:00Z")
         val movingClock = SchedulerClock(testScheduler, beforeMidnight)
         sessions.sessions.value = listOf(session("late", beforeMidnight.toEpochMilli() - 30 * 60_000L, minutes = 5))
-        val vm = HomeViewModel(sessions, settings, publisher(FakeSync()), movingClock)
+        val vm = HomeViewModel(sessions, settings, publisher(FakeSync()), movingClock, TimeChanges.None)
         backgroundScope.launch { vm.state.collect {} }
         runCurrent()
         assertEquals(5, vm.state.value.todayMinutes)

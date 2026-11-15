@@ -40,7 +40,9 @@ class SessionRecorderTest {
         store.upsertAll(listOf(session("old", 45)))
         val sync = FakeSync()
 
-        testRecorder(store, sync, clock).record(session("new", 0))
+        val recorder = testRecorder(store, sync, clock)
+        recorder.record(session("new", 0))
+        recorder.publish()
 
         assertEquals(listOf("new"), sync.published.single().map { it.id })
         assertEquals(2, store.sessions.value.size)

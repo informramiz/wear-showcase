@@ -4,8 +4,11 @@ import android.content.ComponentName
 import androidx.wear.protolayout.ActionBuilders
 import androidx.wear.protolayout.DimensionBuilders.expand
 import androidx.wear.protolayout.LayoutElementBuilders.Box
+import androidx.wear.protolayout.LayoutElementBuilders.Layout
 import androidx.wear.protolayout.ModifiersBuilders
+import androidx.wear.protolayout.TimelineBuilders.TimeInterval
 import androidx.wear.protolayout.TimelineBuilders.Timeline
+import androidx.wear.protolayout.TimelineBuilders.TimelineEntry
 import androidx.wear.protolayout.material3.ColorScheme
 import androidx.wear.protolayout.material3.MaterialScope
 import androidx.wear.protolayout.material3.ProgressIndicatorColors
@@ -21,11 +24,12 @@ import androidx.wear.tiles.RequestBuilders.TileRequest
 import androidx.wear.tiles.TileBuilders.Tile
 import com.codebyramiz.breathefocus.core.data.SessionRepository
 import com.codebyramiz.breathefocus.core.data.SettingsRepository
+import com.codebyramiz.breathefocus.core.model.BreathingPattern
 import com.codebyramiz.breathefocus.core.model.MindfulStats
 import com.codebyramiz.breathefocus.wear.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
 import java.time.Clock
-import java.time.LocalDate
+import java.time.ZonedDateTime
 import javax.inject.Inject
 import kotlinx.coroutines.flow.first
 
@@ -44,10 +48,25 @@ class BreatheTileService : Material3TileService(false, BrandTileColors, null) {
     @Inject lateinit var clock: Clock
 
     override suspend fun MaterialScope.tileResponse(requestParams: TileRequest): Tile {
-        val today = LocalDate.now(clock)
-        val startOfDay = today.atStartOfDay(clock.zone).toInstant().toEpochMilli()
+        val now = ZonedDateTime.now(clock)
+        val today = now.toLocalDate()
+        val startOfDay = today.atStartOfDay(now.zone).toInstant().toEpochMilli()
         val minutes = MindfulStats(clock.zone).minutesOn(today, repository.observeSince(startOfDay).first())
         val pattern = settings.defaultPattern.first()
+        val midnight = today.plusDays(1).atStartOfDay(now.zone).toInstant().toEpochMilli()
+        // Two entries: today's total until local midnight, then a fresh zero-minute day.
+        return Tile.Builder()
+            .setFreshnessIntervalMillis(FRESHNESS_MILLIS)
+            .setTileTimeline(
+                Timeline.Builder()
+                    .addTimelineEntry(entry(minutes, pattern, start = null, end = midnight))
+                    .addTimelineEntry(entry(0, pattern, start = midnight, end = null))
+                    .build(),
+            )
+            .build()
+    }
+
+    private fun MaterialScope.entry(minutes: Int, pattern: BreathingPattern, start: Long?, end: Long?): TimelineEntry {
         val goal = MindfulStats.DAILY_GOAL_MINUTES
         val layout = primaryLayout(
             titleSlot = { text("Mindful today".layoutString) },
@@ -76,9 +95,12 @@ class BreatheTileService : Material3TileService(false, BrandTileColors, null) {
                 }
             },
         )
-        return Tile.Builder()
-            .setFreshnessIntervalMillis(FRESHNESS_MILLIS)
-            .setTileTimeline(Timeline.fromLayoutElement(layout))
+        val validity = TimeInterval.Builder()
+        start?.let(validity::setStartMillis)
+        end?.let(validity::setEndMillis)
+        return TimelineEntry.Builder()
+            .setLayout(Layout.fromLayoutElement(layout))
+            .setValidity(validity.build())
             .build()
     }
 
