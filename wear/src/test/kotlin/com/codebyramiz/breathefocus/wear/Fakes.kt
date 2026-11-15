@@ -90,7 +90,7 @@ class FakePhaseAlarms : PhaseAlarms {
     var triggerAt: Long? = null
     var cancelled = 0
 
-    override fun schedule(triggerAtElapsedRealtime: Long) {
+    override fun schedule(triggerAtElapsedRealtime: Long, sessionId: String) {
         triggerAt = triggerAtElapsedRealtime
     }
 

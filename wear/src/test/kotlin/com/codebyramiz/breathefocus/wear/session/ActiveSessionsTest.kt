@@ -112,6 +112,17 @@ class ActiveSessionsTest {
     }
 
     @Test
+    fun `a recovered breathing session is capped at the breathing limit`() = runTest {
+        val sessions = activeSessions(this)
+        sessions.resumeOrBegin(SessionType.BREATHING, BreathingPattern.BOX)
+        advanceTimeBy(60 * 60_000L)
+
+        sessions.recoverOrphan().join()
+
+        assertEquals(ActiveSessions.MAX_BREATHING_MILLIS, store.sessions.value.single().durationMillis)
+    }
+
+    @Test
     fun `finish cancels the alarm and saves the session`() = runTest {
         val sessions = activeSessions(this)
         val started = sessions.resumeOrBegin(SessionType.BREATHING, BreathingPattern.BOX)

@@ -157,7 +157,7 @@ private fun PatternCard(state: HomeUiState, onPatternSelected: (BreathingPattern
             }
             val syncText = when (state.watchSync) {
                 WatchSync.Idle -> null
-                WatchSync.Sent -> "Sent to your watch"
+                WatchSync.Sent -> "Queued for your watch"
                 WatchSync.Failed -> "Saved on your phone. Couldn't reach your watch, try again."
             }
             if (syncText != null) {
