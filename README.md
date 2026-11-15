@@ -23,24 +23,29 @@ It shows a session with heart rate, history, the complication, the tile, and the
 
 **Watch (`:wear`)**
 - Three breathing patterns (Box 4-4-4-4, 4-7-8, Coherent 5.5-5.5) with an animated ring that
-  grows and shrinks with each phase, plus a haptic tick at every phase change.
+  grows and shrinks with each phase, plus a haptic tick at every phase change. Breathing sessions
+  stop after 15 minutes, the longest the screen-off wake lock holds the cues on time.
 - Live heart rate from Health Services `MeasureClient`. If permission is denied or there is no
   sensor, the session carries on and shows why instead.
-- 25-minute Pomodoro focus timer with 5-minute breaks.
+- 25-minute Pomodoro focus timer with 5-minute breaks. Phase boundaries are `AlarmManager`
+  alarms, exact when the user has granted exact-alarm access and otherwise inexact, so a buzz can
+  arrive late on a dozing watch while the on-screen timer stays correct.
 - Session history with today's mindful minutes and a day streak.
 - Ongoing Activity while a session runs, so it stays one tap away from the watch face.
 - ProtoLayout Material 3 tile: progress ring towards a 10-minute daily goal and a Start button
   for the default pattern.
 - Complication (short text and ranged value) showing today's mindful minutes.
-- Tile and complication refresh whenever a session is saved.
+- Tile and complication refresh whenever a session is saved, and both switch to a zero total at
+  local midnight through timeline entries.
 
 **Phone (`:mobile`)**
 - Weekly mindful-minutes chart against the daily goal, today's total and the streak.
 - Recent sessions with average heart rate.
 - Default-pattern picker that syncs to the watch and its tile.
 
-**Sync**: the watch publishes the last 30 days of sessions as a `DataItem`; the phone publishes
-the default pattern. Both sides listen with a `WearableListenerService`.
+**Sync**: the watch publishes the last 30 days of sessions as chunked `DataItem`s at
+`/breathe/sessions/<n>` and removes its own stale chunks; the phone publishes the default pattern at
+`/breathe/settings`. A durable outbox retries until the phone has the data. Both sides listen with a `WearableListenerService`.
 
 Sync is verified end to end on a paired Wear OS emulator and phone emulator: a real session
 finished on the watch shows up in the phone's recent sessions and chart. The full emulator smoke
@@ -59,7 +64,8 @@ flowchart LR
     UI[Compose screens] --> VM[ViewModels]
     VM --> HR[HeartRateMonitor<br/>Health Services]
     VM --> REC[SessionRecorder]
-    REC --> OA[OngoingSessionService]
+    VM --> NOT[SessionNotifier]
+    NOT --> OA[OngoingSessionService]
     REC --> SURF[Tile + Complication refresh]
     WL[WearDataListenerService]
   end
@@ -80,7 +86,7 @@ flowchart LR
   PVM --> SYNC
   IMP --> REPO
   WL --> REPO
-  SYNC -- "/breathe/sessions" --> ML
+  SYNC -- "/breathe/sessions/n" --> ML
   SYNC -- "/breathe/settings" --> WL
   VM --> MODEL
   PVM --> MODEL

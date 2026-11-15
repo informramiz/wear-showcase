@@ -23,7 +23,8 @@ import kotlinx.coroutines.sync.withLock
 /**
  * Owns the durable lifecycle of the one running session. Every operation takes the same lock,
  * so a session recovered after process death is always finished before a new one begins, and
- * finishing never races with recovery.
+ * finishing never races with recovery. Only the local work is under the lock; publishing to the
+ * phone happens after it is released.
  */
 @Singleton
 class ActiveSessions @Inject constructor(
@@ -40,17 +41,24 @@ class ActiveSessions @Inject constructor(
      * Continues the persisted session of [type] if there is one (the process was recreated while
      * it ran), otherwise begins a new one. A persisted session of another type is finished first.
      */
-    suspend fun resumeOrBegin(type: SessionType, pattern: BreathingPattern?): ActiveSession = lock.withLock {
+    suspend fun resumeOrBegin(type: SessionType, pattern: BreathingPattern?): ActiveSession {
+        val (session, finishedOther) = lock.withLock { beginLocked(type, pattern) }
+        if (finishedOther) recorder.publish()
+        return session
+    }
+
+    private suspend fun beginLocked(type: SessionType, pattern: BreathingPattern?): Pair<ActiveSession, Boolean> {
         val existing = store.current()
-        if (existing != null && existing.type == type) return@withLock existing
+        if (existing != null && existing.type == type) return existing to false
         existing?.let { recorder.record(it.recovered()) }
-        ActiveSession(
+        return ActiveSession(
             id = UUID.randomUUID().toString(),
             type = type,
             pattern = pattern,
             startedAtElapsedRealtime = ticker.now(),
             startedAtEpochMillis = clock.millis(),
-        ).also { store.begin(it) }
+            bootCount = ticker.bootCount(),
+        ).also { store.begin(it) } to (existing != null)
     }
 
     /** The persisted session of [type], without starting one. */
@@ -67,22 +75,27 @@ class ActiveSessions @Inject constructor(
             alarms.cancel()
             recorder.record(session)
         }
+        // Outside the lock: a slow Play Services call must not hold up the next session.
+        recorder.publish()
     }
 
     /** Finishes a session left behind by a process that died, using the time it had when last seen. */
     fun recoverOrphan(): Job = scope.launch(start = CoroutineStart.UNDISPATCHED) {
-        lock.withLock {
+        val recovered = lock.withLock {
             store.current()?.let {
                 alarms.cancel()
                 recorder.record(it.recovered())
-            }
+                true
+            } ?: false
         }
+        if (recovered) recorder.publish()
     }
 
     private fun ActiveSession.recovered(): Session {
         val elapsed = recoveredElapsedMillis(
             monotonicMillis = ticker.now() - startedAtElapsedRealtime,
             wallClockMillis = clock.millis() - startedAtEpochMillis,
+            rebooted = if (bootCount == 0) null else bootCount != ticker.bootCount(),
         )
         val counted = if (type == SessionType.FOCUS) Pomodoro.focusedMillis(PomodoroConfig(), elapsed) else elapsed
         return Session(
@@ -101,12 +114,14 @@ class ActiveSessions @Inject constructor(
         private const val CLOCK_DISAGREEMENT_MILLIS = 60_000L
 
         /**
-         * The monotonic clock restarts at reboot, so a disagreement with the wall clock means the
-         * device restarted and only the wall clock is meaningful.
+         * The monotonic clock restarts at reboot, so after a reboot only the wall clock is
+         * meaningful. [rebooted] comes from the boot counter; when it is unknown (a session saved
+         * before the counter was recorded) a large disagreement between the clocks is taken as a reboot.
          */
-        fun recoveredElapsedMillis(monotonicMillis: Long, wallClockMillis: Long): Long {
-            val rebooted = monotonicMillis < 0 || abs(monotonicMillis - wallClockMillis) > CLOCK_DISAGREEMENT_MILLIS
-            val elapsed = if (rebooted) wallClockMillis else monotonicMillis
+        fun recoveredElapsedMillis(monotonicMillis: Long, wallClockMillis: Long, rebooted: Boolean? = null): Long {
+            val restarted = rebooted
+                ?: (monotonicMillis < 0 || abs(monotonicMillis - wallClockMillis) > CLOCK_DISAGREEMENT_MILLIS)
+            val elapsed = if (restarted) wallClockMillis else monotonicMillis
             return elapsed.coerceIn(0, MAX_RECOVERED_MILLIS)
         }
     }

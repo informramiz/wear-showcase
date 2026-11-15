@@ -1,5 +1,6 @@
 package com.codebyramiz.breathefocus.wear.ui
 
+import com.codebyramiz.breathefocus.core.data.time.TimeChanges
 import com.codebyramiz.breathefocus.core.model.BreathingPattern
 import com.codebyramiz.breathefocus.core.model.Session
 import com.codebyramiz.breathefocus.core.model.SessionType
@@ -33,7 +34,7 @@ class HistoryViewModelTest {
                 null,
             ),
         )
-        val vm = HistoryViewModel(repository, SchedulerClock(testScheduler, beforeMidnight))
+        val vm = HistoryViewModel(repository, SchedulerClock(testScheduler, beforeMidnight), TimeChanges.None)
         backgroundScope.launch { vm.state.collect {} }
         runCurrent()
         assertEquals(5, vm.state.value.todayMinutes)

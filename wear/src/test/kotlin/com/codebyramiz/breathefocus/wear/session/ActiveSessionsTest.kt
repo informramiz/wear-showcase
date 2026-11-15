@@ -164,6 +164,19 @@ class ActiveSessionsTest {
     }
 
     @Test
+    fun `a wall-clock adjustment without a reboot keeps the monotonic time`() {
+        // The user moved the clock back an hour; the boot count is unchanged, so only the monotonic clock counts.
+        assertEquals(
+            120_000L,
+            ActiveSessions.recoveredElapsedMillis(120_000, wallClockMillis = -3_480_000, rebooted = false),
+        )
+        assertEquals(
+            120_000L,
+            ActiveSessions.recoveredElapsedMillis(120_000, wallClockMillis = 7_200_000, rebooted = false),
+        )
+    }
+
+    @Test
     fun `recovered time is capped`() {
         assertEquals(
             ActiveSessions.MAX_RECOVERED_MILLIS,

@@ -1,5 +1,6 @@
 package com.codebyramiz.breathefocus.core.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.codebyramiz.breathefocus.core.model.ActiveSession
@@ -13,6 +14,7 @@ data class ActiveSessionEntity(
     val pattern: String?,
     val startedAtElapsedRealtime: Long,
     val startedAtEpochMillis: Long,
+    @ColumnInfo(defaultValue = "0") val bootCount: Int = 0,
 )
 
 fun ActiveSessionEntity.toModel() = ActiveSession(
@@ -21,6 +23,7 @@ fun ActiveSessionEntity.toModel() = ActiveSession(
     pattern = pattern?.let { BreathingPattern.fromNameOrDefault(it) },
     startedAtElapsedRealtime = startedAtElapsedRealtime,
     startedAtEpochMillis = startedAtEpochMillis,
+    bootCount = bootCount,
 )
 
 fun ActiveSession.toEntity() = ActiveSessionEntity(
@@ -29,4 +32,5 @@ fun ActiveSession.toEntity() = ActiveSessionEntity(
     pattern = pattern?.name,
     startedAtElapsedRealtime = startedAtElapsedRealtime,
     startedAtEpochMillis = startedAtEpochMillis,
+    bootCount = bootCount,
 )

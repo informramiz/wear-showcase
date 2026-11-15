@@ -3,6 +3,7 @@ package com.codebyramiz.breathefocus.wear.ui.history
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codebyramiz.breathefocus.core.data.SessionRepository
+import com.codebyramiz.breathefocus.core.data.time.TimeChanges
 import com.codebyramiz.breathefocus.core.data.time.today
 import com.codebyramiz.breathefocus.core.model.MindfulStats
 import com.codebyramiz.breathefocus.core.model.Session
@@ -22,10 +23,18 @@ data class HistoryUiState(
 )
 
 @HiltViewModel
-class HistoryViewModel @Inject constructor(repository: SessionRepository, clock: Clock) : ViewModel() {
-    private val stats = MindfulStats(clock.zone)
+class HistoryViewModel @Inject constructor(
+    repository: SessionRepository,
+    private val clock: Clock,
+    timeChanges: TimeChanges,
+) : ViewModel() {
+    // The zone is read when the date changes, so a time-zone change regroups the sessions.
 
-    val state: StateFlow<HistoryUiState> = combine(repository.observeAll(), clock.today()) { sessions, today ->
+    val state: StateFlow<HistoryUiState> = combine(repository.observeAll(), clock.today(timeChanges.events)) {
+            sessions,
+            today,
+        ->
+        val stats = MindfulStats(clock.zone)
         HistoryUiState(
             loading = false,
             todayMinutes = stats.minutesOn(today, sessions),

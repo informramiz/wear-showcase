@@ -6,6 +6,7 @@ package com.codebyramiz.breathefocus.core.model
  * @property id the id the finished [Session] will carry, so finishing is idempotent.
  * @property startedAtElapsedRealtime start on the `SystemClock.elapsedRealtime` time base.
  * @property startedAtEpochMillis start on the wall clock; used if the elapsed time base was reset by a reboot.
+ * @property bootCount the device's boot counter when the session started; 0 when unknown.
  */
 data class ActiveSession(
     val id: String,
@@ -13,4 +14,5 @@ data class ActiveSession(
     val pattern: BreathingPattern?,
     val startedAtElapsedRealtime: Long,
     val startedAtEpochMillis: Long,
+    val bootCount: Int = 0,
 )

@@ -105,8 +105,8 @@ class OngoingSessionService : LifecycleService() {
         const val EXTRA_STARTED_AT = "started_at"
         const val EXTRA_KEEP_AWAKE = "keep_awake"
 
-        // Longer than a breathing session is expected to run; the lock expires on its own after this.
-        private const val WAKE_LOCK_TIMEOUT_MILLIS = 15 * 60_000L
+        // Longer than the longest breathing session (BreathingViewModel.MAX_SESSION_MILLIS); expires on its own.
+        private const val WAKE_LOCK_TIMEOUT_MILLIS = 16 * 60_000L
         private const val CHANNEL_ID = "sessions"
         private const val NOTIFICATION_ID = 42
     }

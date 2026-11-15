@@ -5,10 +5,12 @@ import androidx.wear.watchface.complications.data.ShortTextComplicationData
 import androidx.wear.watchface.complications.datasource.ComplicationRequest
 import com.codebyramiz.breathefocus.wear.complication.MindfulMinutesComplicationService
 import com.codebyramiz.breathefocus.wear.tile.BreatheTileService
+import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -32,11 +34,15 @@ class EntryPointServicesTest {
     fun `complication service answers a request from its injected repository`() {
         val service = Robolectric.buildService(MindfulMinutesComplicationService::class.java).create().get()
 
-        val data = runBlocking {
+        val timeline = runBlocking {
             service.onComplicationRequest(ComplicationRequest(1, ComplicationType.SHORT_TEXT, false))
-        }
+        }!!
 
-        val shortText = data as ShortTextComplicationData
-        assertEquals("0m", shortText.text.getTextAt(service.resources, Instant.now()).toString())
+        val today = timeline.defaultComplicationData as ShortTextComplicationData
+        assertEquals("0m", today.text.getTextAt(service.resources, Instant.now()).toString())
+        // A second entry takes over at the next local midnight, so yesterday's total never lingers.
+        val next = timeline.timelineEntries.single()
+        assertTrue(next.validity.start.isAfter(Instant.now()))
+        assertEquals(Duration.ofDays(1), Duration.between(next.validity.start, next.validity.end))
     }
 }

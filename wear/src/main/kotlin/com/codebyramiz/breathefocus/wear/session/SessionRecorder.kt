@@ -11,9 +11,10 @@ fun interface SurfaceRefresher {
 }
 
 /**
- * One place that finishes a session: persist it atomically with its outbox entry, refresh the
- * watch surfaces and push recent history to the phone. Finishing is idempotent because the
- * session id is the id of the active record it closes.
+ * One place that finishes a session: persist it atomically with its outbox entry and refresh the
+ * watch surfaces ([record]), then push recent history to the phone ([publish]). They are separate
+ * so a caller can release its locks before waiting on Play Services. Finishing is idempotent
+ * because the session id is the id of the active record it closes.
  */
 class SessionRecorder @Inject constructor(
     private val repository: SessionRepository,
@@ -28,8 +29,10 @@ class SessionRecorder @Inject constructor(
         }
         repository.finish(session)
         refresher.refresh()
-        publisher.publishRecent()
     }
+
+    /** Sends the sessions not yet on the phone. Safe to call at any time; failures stay in the outbox. */
+    suspend fun publish() = publisher.publishRecent()
 
     private companion object {
         // Mindful minutes are counted in whole minutes, so shorter sessions add nothing.
