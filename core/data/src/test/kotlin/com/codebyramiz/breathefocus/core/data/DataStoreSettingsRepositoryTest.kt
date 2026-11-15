@@ -1,30 +1,33 @@
 package com.codebyramiz.breathefocus.core.data
 
-import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.emptyPreferences
 import com.codebyramiz.breathefocus.core.model.BreathingPattern
-import java.io.File
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Rule
 import org.junit.Test
-import org.junit.rules.TemporaryFolder
 
-@OptIn(ExperimentalCoroutinesApi::class)
-class DataStoreSettingsRepositoryTest {
-    @get:Rule val tmp = TemporaryFolder()
+/**
+ * In-memory store: DataStore's file-based atomic rename is unreliable on Windows hosts (the CI runner),
+ * and these tests cover the repository's logic, not DataStore's file handling.
+ */
+private class InMemoryPreferencesStore : DataStore<Preferences> {
+    private val state = MutableStateFlow(emptyPreferences())
+    override val data = state
 
-    private fun TestScope.repository(): DataStoreSettingsRepository {
-        val scope = TestScope(UnconfinedTestDispatcher(testScheduler))
-        val store = PreferenceDataStoreFactory.create(scope = scope.backgroundScope) {
-            File(tmp.root, "settings.preferences_pb")
-        }
-        return DataStoreSettingsRepository(store)
+    override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences {
+        val updated = transform(state.value)
+        state.value = updated
+        return updated
     }
+}
+
+class DataStoreSettingsRepositoryTest {
+    private fun repository() = DataStoreSettingsRepository(InMemoryPreferencesStore())
 
     @Test
     fun `defaults to box and persists a new choice`() = runTest {
