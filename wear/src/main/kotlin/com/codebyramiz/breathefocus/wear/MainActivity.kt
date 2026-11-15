@@ -9,11 +9,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.util.Consumer
 import com.codebyramiz.breathefocus.core.model.BreathingPattern
+import com.codebyramiz.breathefocus.wear.session.ActiveSessions
 import com.codebyramiz.breathefocus.wear.ui.WearApp
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject lateinit var activeSessions: ActiveSessions
 
     /** Pending tile request; cleared once the UI has acted on it. */
     private var quickStart by mutableStateOf<BreathingPattern?>(null)
@@ -26,7 +30,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Only a fresh launch reads the intent; after recreation the back stack is already restored.
-        if (savedInstanceState == null) quickStart = intent.quickStartPattern()
+        if (savedInstanceState == null) {
+            quickStart = intent.quickStartPattern()
+            // A session left by a killed process has no screen to resume it: record it.
+            // A system-restored activity instead lets its ViewModels adopt the persisted session.
+            activeSessions.recoverOrphan()
+        }
         addOnNewIntentListener(newIntentListener)
         setContent { WearApp(quickStart = quickStart, onQuickStartHandled = { quickStart = null }) }
     }

@@ -4,8 +4,10 @@ import com.codebyramiz.breathefocus.wear.haptics.Haptics
 import com.codebyramiz.breathefocus.wear.haptics.VibratorHaptics
 import com.codebyramiz.breathefocus.wear.health.HealthServicesHeartRateMonitor
 import com.codebyramiz.breathefocus.wear.health.HeartRateMonitor
+import com.codebyramiz.breathefocus.wear.session.AlarmManagerPhaseAlarms
 import com.codebyramiz.breathefocus.wear.session.MonotonicSessionTicker
 import com.codebyramiz.breathefocus.wear.session.OngoingSessionNotifier
+import com.codebyramiz.breathefocus.wear.session.PhaseAlarms
 import com.codebyramiz.breathefocus.wear.session.SessionNotifier
 import com.codebyramiz.breathefocus.wear.session.SessionTicker
 import com.codebyramiz.breathefocus.wear.session.SurfaceRefresher
@@ -25,6 +27,8 @@ abstract class WearModule {
     @Binds abstract fun notifier(impl: OngoingSessionNotifier): SessionNotifier
 
     @Binds abstract fun ticker(impl: MonotonicSessionTicker): SessionTicker
+
+    @Binds abstract fun phaseAlarms(impl: AlarmManagerPhaseAlarms): PhaseAlarms
 
     @Binds abstract fun refresher(impl: WatchSurfaceRefresher): SurfaceRefresher
 }

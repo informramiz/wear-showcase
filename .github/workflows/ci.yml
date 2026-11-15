@@ -5,23 +5,28 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Self-hosted runner: never run fork PRs on it.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, buildpc]
     timeout-minutes: 45
+    # buildPC (Windows): JDK 21 and the Android SDK are preinstalled there.
+    defaults:
+      run:
+        shell: 'C:\PROGRA~1\Git\bin\bash.exe -e -o pipefail {0}'
+    env:
+      JAVA_HOME: 'C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot'
+      ANDROID_HOME: 'C:\Android\sdk'
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: 21
-      - uses: gradle/actions/setup-gradle@v5
-      - name: Install Android platform 37
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" > /dev/null
       - name: ktlint
         run: ./gradlew ktlintCheck
       - name: Unit tests

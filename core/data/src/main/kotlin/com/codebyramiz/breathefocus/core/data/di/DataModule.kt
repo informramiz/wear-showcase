@@ -6,15 +6,17 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.room.Room
+import com.codebyramiz.breathefocus.core.data.ActiveSessionStore
 import com.codebyramiz.breathefocus.core.data.DataStoreSettingsRepository
 import com.codebyramiz.breathefocus.core.data.RoomSessionRepository
+import com.codebyramiz.breathefocus.core.data.SessionOutbox
 import com.codebyramiz.breathefocus.core.data.SessionRepository
 import com.codebyramiz.breathefocus.core.data.SettingsRepository
 import com.codebyramiz.breathefocus.core.data.db.BreatheDatabase
 import com.codebyramiz.breathefocus.core.data.db.SessionDao
+import com.codebyramiz.breathefocus.core.data.sync.DataLayerReader
 import com.codebyramiz.breathefocus.core.data.sync.DataLayerSync
-import com.codebyramiz.breathefocus.core.data.sync.DataStorePendingSessionSync
-import com.codebyramiz.breathefocus.core.data.sync.PendingSessionSync
+import com.codebyramiz.breathefocus.core.data.sync.WearableDataLayerReader
 import com.codebyramiz.breathefocus.core.data.sync.WearableDataLayerSync
 import com.google.android.gms.wearable.DataClient
 import com.google.android.gms.wearable.Wearable
@@ -36,13 +38,19 @@ abstract class DataModule {
 
     @Binds abstract fun dataLayerSync(impl: WearableDataLayerSync): DataLayerSync
 
-    @Binds abstract fun pendingSessionSync(impl: DataStorePendingSessionSync): PendingSessionSync
+    @Binds abstract fun dataLayerReader(impl: WearableDataLayerReader): DataLayerReader
+
+    @Binds abstract fun activeSessionStore(impl: RoomSessionRepository): ActiveSessionStore
+
+    @Binds abstract fun sessionOutbox(impl: RoomSessionRepository): SessionOutbox
 
     companion object {
         @Provides
         @Singleton
         fun database(@ApplicationContext context: Context): BreatheDatabase =
-            Room.databaseBuilder(context, BreatheDatabase::class.java, BreatheDatabase.NAME).build()
+            Room.databaseBuilder(context, BreatheDatabase::class.java, BreatheDatabase.NAME)
+                .addMigrations(BreatheDatabase.MIGRATION_1_2)
+                .build()
 
         @Provides fun sessionDao(db: BreatheDatabase): SessionDao = db.sessionDao()
 

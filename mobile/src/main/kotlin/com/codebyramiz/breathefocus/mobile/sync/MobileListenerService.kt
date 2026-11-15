@@ -18,6 +18,8 @@ class MobileListenerService : WearableListenerService() {
 
     @Inject lateinit var importer: SessionImporter
 
+    @Inject lateinit var reconciler: SessionReconciler
+
     /**
      * Runs on a background thread. The import completes before returning: the system may unbind
      * the service as soon as this callback ends, which would cancel work launched elsewhere.
@@ -29,7 +31,10 @@ class MobileListenerService : WearableListenerService() {
             .mapNotNull { DataMapItem.fromDataItem(it.dataItem).dataMap.getString(DataLayerContract.KEY_SESSIONS_JSON) }
         if (payloads.isEmpty()) return
         val imported = runBlocking { withTimeoutOrNull(IMPORT_TIMEOUT) { payloads.forEach { importChunk(it) } } }
-        if (imported == null) Log.w(TAG, "Timed out importing session history from the watch")
+        if (imported == null) {
+            Log.w(TAG, "Timed out importing session history from the watch; reconciling")
+            reconciler.reconcileInBackground()
+        }
     }
 
     private suspend fun importChunk(payload: String) {

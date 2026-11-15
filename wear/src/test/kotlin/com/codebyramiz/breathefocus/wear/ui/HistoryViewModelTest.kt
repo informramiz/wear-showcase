@@ -3,7 +3,7 @@ package com.codebyramiz.breathefocus.wear.ui
 import com.codebyramiz.breathefocus.core.model.BreathingPattern
 import com.codebyramiz.breathefocus.core.model.Session
 import com.codebyramiz.breathefocus.core.model.SessionType
-import com.codebyramiz.breathefocus.wear.FakeSessionRepository
+import com.codebyramiz.breathefocus.wear.FakeSessionStore
 import com.codebyramiz.breathefocus.wear.MainDispatcherRule
 import com.codebyramiz.breathefocus.wear.SchedulerClock
 import com.codebyramiz.breathefocus.wear.ui.history.HistoryViewModel
@@ -22,7 +22,7 @@ class HistoryViewModelTest {
     @Test
     fun `today rolls over at midnight while the screen stays open`() = runTest {
         val beforeMidnight = Instant.parse("2026-11-13T23:59:00Z")
-        val repository = FakeSessionRepository()
+        val repository = FakeSessionStore()
         repository.sessions.value = listOf(
             Session(
                 "late",

@@ -2,6 +2,7 @@ package com.codebyramiz.breathefocus.mobile
 
 import com.codebyramiz.breathefocus.core.data.SessionRepository
 import com.codebyramiz.breathefocus.core.data.SettingsRepository
+import com.codebyramiz.breathefocus.core.data.sync.DataLayerReader
 import com.codebyramiz.breathefocus.core.data.sync.DataLayerSync
 import com.codebyramiz.breathefocus.core.model.BreathingPattern
 import com.codebyramiz.breathefocus.core.model.Session
@@ -21,23 +22,36 @@ class FakeSessionRepository : SessionRepository {
     override suspend fun getSince(fromEpochMillis: Long): List<Session> =
         sessions.value.filter { it.startedAtEpochMillis >= fromEpochMillis }
 
-    override suspend fun save(session: Session) {
-        sessions.value = sessions.value.filterNot { it.id == session.id } + session
-    }
+    override suspend fun finish(session: Session) = upsertAll(listOf(session))
 
-    override suspend fun upsertAll(sessions: List<Session>) = sessions.forEach { save(it) }
+    override suspend fun upsertAll(sessions: List<Session>) {
+        val ids = sessions.map { it.id }.toSet()
+        this.sessions.value = this.sessions.value.filterNot { it.id in ids } + sessions
+    }
 }
 
 class FakeSettings(initial: BreathingPattern = BreathingPattern.DEFAULT) : SettingsRepository {
     val pattern = MutableStateFlow(initial)
+    var pending: BreathingPattern? = null
     override val defaultPattern: Flow<BreathingPattern> = pattern
 
     override suspend fun setDefaultPattern(pattern: BreathingPattern) {
         this.pattern.value = pattern
     }
+
+    override suspend fun selectDefaultPattern(pattern: BreathingPattern) {
+        this.pattern.value = pattern
+        pending = pattern
+    }
+
+    override suspend fun pendingPublication(): BreathingPattern? = pending
+
+    override suspend fun markPublished(pattern: BreathingPattern) {
+        if (pending == pattern) pending = null
+    }
 }
 
-class FakeSync(private val fail: Boolean = false) : DataLayerSync {
+class FakeSync(var fail: Boolean = false) : DataLayerSync {
     val patterns = mutableListOf<BreathingPattern>()
 
     override suspend fun publishSessions(sessions: List<Session>) = Unit
@@ -46,6 +60,13 @@ class FakeSync(private val fail: Boolean = false) : DataLayerSync {
         if (fail) error("watch not connected")
         patterns += pattern
     }
+}
+
+class FakeDataLayerReader(var payloads: List<String> = emptyList(), var pattern: BreathingPattern? = null) :
+    DataLayerReader {
+    override suspend fun sessionPayloads(): List<String> = payloads
+
+    override suspend fun defaultPattern(): BreathingPattern? = pattern
 }
 
 fun session(id: String, startedAt: Long, minutes: Int, type: SessionType = SessionType.BREATHING, hr: Int? = null) =

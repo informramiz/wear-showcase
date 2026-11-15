@@ -2,6 +2,7 @@ package com.codebyramiz.breathefocus.wear.ui.breathing
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.codebyramiz.breathefocus.core.model.ActiveSession
 import com.codebyramiz.breathefocus.core.model.BreathState
 import com.codebyramiz.breathefocus.core.model.BreathingEngine
 import com.codebyramiz.breathefocus.core.model.BreathingPattern
@@ -10,12 +11,11 @@ import com.codebyramiz.breathefocus.core.model.SessionType
 import com.codebyramiz.breathefocus.wear.haptics.Haptics
 import com.codebyramiz.breathefocus.wear.health.HeartRate
 import com.codebyramiz.breathefocus.wear.health.HeartRateMonitor
+import com.codebyramiz.breathefocus.wear.session.ActiveSessions
+import com.codebyramiz.breathefocus.wear.session.SessionFrames
 import com.codebyramiz.breathefocus.wear.session.SessionNotifier
-import com.codebyramiz.breathefocus.wear.session.SessionRecorder
 import com.codebyramiz.breathefocus.wear.session.SessionTicker
 import dagger.hilt.android.lifecycle.HiltViewModel
-import java.time.Clock
-import java.util.UUID
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -41,26 +41,35 @@ data class BreathingUiState(
 
 /**
  * Runs one breathing session. The session lives as long as this ViewModel's nav entry: leaving
- * the screen clears the ViewModel, which ends and records the session.
+ * the screen clears the ViewModel, which ends and records the session. The running session is
+ * also persisted, so if the process is killed it is continued (system restore) or recorded
+ * (fresh launch) instead of being lost.
  *
- * Phase haptics keep running while the screen is off, scheduled once per phase. The ring
- * animation and heart-rate measurement run only while the UI collects [state].
+ * Phase haptics keep running while the screen is off: the foreground service holds a bounded
+ * wake lock so the delays below are not stalled by deep sleep. The ring animation and heart-rate
+ * measurement run only while the UI collects [state].
  */
 @HiltViewModel
 class BreathingViewModel @Inject constructor(
     private val ticker: SessionTicker,
     private val haptics: Haptics,
     private val heartRateMonitor: HeartRateMonitor,
-    private val recorder: SessionRecorder,
+    private val activeSessions: ActiveSessions,
     private val notifier: SessionNotifier,
-    private val clock: Clock,
 ) : ViewModel() {
 
-    private class Active(val pattern: BreathingPattern, val startedAt: Long, val startedAtEpochMillis: Long)
+    private class Running(
+        val id: String,
+        val pattern: BreathingPattern,
+        val startedAt: Long,
+        val startedAtEpochMillis: Long,
+    )
 
-    private val active = MutableStateFlow<Active?>(null)
+    private val frames = SessionFrames(ticker)
+    private val active = MutableStateFlow<Running?>(null)
     private val finished = MutableStateFlow(BreathingUiState())
     private val heartRateSamples = mutableListOf<Int>()
+    private var startJob: Job? = null
     private var hapticsJob: Job? = null
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -68,12 +77,26 @@ class BreathingViewModel @Inject constructor(
         .flatMapLatest { session -> if (session == null) finished else liveState(session) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BreathingUiState())
 
+    /** Begins a session, or continues the one that was running when the process was killed. */
     fun start(pattern: BreathingPattern) {
-        if (active.value != null) return
-        val session = Active(pattern, startedAt = ticker.now(), startedAtEpochMillis = clock.millis())
+        if (active.value != null || startJob != null) return
+        startJob = viewModelScope.launch {
+            val persisted = activeSessions.resumeOrBegin(SessionType.BREATHING, pattern)
+            run(persisted)
+        }
+    }
+
+    private fun run(persisted: ActiveSession) {
+        val pattern = persisted.pattern ?: BreathingPattern.DEFAULT
+        val session = Running(
+            id = persisted.id,
+            pattern = pattern,
+            startedAt = persisted.startedAtElapsedRealtime,
+            startedAtEpochMillis = persisted.startedAtEpochMillis,
+        )
         heartRateSamples.clear()
         active.value = session
-        notifier.started(pattern.displayName + " breathing", session.startedAt)
+        notifier.started(pattern.displayName + " breathing", session.startedAt, keepAwake = true)
         hapticsJob = viewModelScope.launch { phaseHaptics(session) }
     }
 
@@ -90,9 +113,9 @@ class BreathingViewModel @Inject constructor(
             breath = BreathingEngine.stateAt(session.pattern, elapsed),
         )
         active.value = null
-        recorder.finish(
+        activeSessions.finish(
             Session(
-                id = UUID.randomUUID().toString(),
+                id = session.id,
                 type = SessionType.BREATHING,
                 pattern = session.pattern,
                 startedAtEpochMillis = session.startedAtEpochMillis,
@@ -102,8 +125,12 @@ class BreathingViewModel @Inject constructor(
         )
     }
 
-    private fun liveState(session: Active): Flow<BreathingUiState> = combine(
-        ticker.frames(),
+    fun setAmbient(isAmbient: Boolean) = frames.setAmbient(isAmbient)
+
+    fun onAmbientTick() = frames.onAmbientTick()
+
+    private fun liveState(session: Running): Flow<BreathingUiState> = combine(
+        frames.frames,
         heartRateMonitor.readings()
             .onEach { if (it is HeartRate.Bpm) heartRateSamples += it.value }
             .onStart { emit(HeartRate.Acquiring) },
@@ -119,7 +146,7 @@ class BreathingViewModel @Inject constructor(
     }
 
     /** Buzzes at each phase change, sleeping until the next one instead of polling. */
-    private suspend fun phaseHaptics(session: Active) {
+    private suspend fun phaseHaptics(session: Running) {
         var lastPhaseIndex = -1L
         while (true) {
             val elapsed = ticker.now() - session.startedAt
